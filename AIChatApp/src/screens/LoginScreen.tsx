@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, TextInput, Button, StyleSheet, Text, Alert } from "react-native";
+import { View, TextInput, Button, StyleSheet, Text } from "react-native";
 import API from "../services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RootStackParamList } from "../navigation/navigation";
@@ -22,33 +22,41 @@ const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
 
     const handleLogin = async () => {
         try {
-
             const response = await API.post<LoginResponse>("/login", {
                 email,
                 password
             });
 
             console.log("Login response:", response.data);
-            const token = response.data.token;
+            const payload: any = response.data;
+            const token =
+                payload.token ??
+                payload.accessToken ??
+                payload.data?.token ??
+                payload.data?.accessToken;
+
             if (!token) {
-                setMessage("Login failed: token missing");
+                setMessage("Login failed: token missing in response");
                 return;
             }
+
             await AsyncStorage.setItem("token", token);
-            const userId = response.data.userId ?? response.data.user?.id;
+            const userId =
+                payload.userId ??
+                payload.user?.id ??
+                payload.data?.userId ??
+                payload.data?.user?.id;
+
             if (typeof userId === "number") {
                 await AsyncStorage.setItem("userId", userId.toString());
             }
-            Alert.alert("Success", "Login successful!", [
-                { text: "OK", onPress: () => onLoginSuccess() }
-            ]);
-            // navigation.navigate("Home")
+            onLoginSuccess();
 
         } catch (error :any) {
 
             console.log(error.response?.data || error.message);
 
-            setMessage("Login failed");
+            setMessage(error.response?.data?.message || "Login failed");
 
         }
     };
