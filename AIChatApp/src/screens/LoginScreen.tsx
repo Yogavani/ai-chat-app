@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RootStackParamList } from "../navigation/navigation";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { LoginResponse } from "../services/apiTypes";
+import { useAppTheme } from "../theme/ThemeContext";
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -16,6 +17,7 @@ type Props = {
   };
 
 const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
+    const { colors } = useAppTheme();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [message, setMessage] = useState("");
@@ -62,26 +64,28 @@ const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
 
             <TextInput
                 placeholder="Email"
-                style={styles.input}
+                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.inputBackground, color: colors.text }]}
                 value={email}
                 onChangeText={setEmail}
+                placeholderTextColor={colors.secondaryText}
             />
 
             <TextInput
                 placeholder="Password"
-                style={styles.input}
+                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.inputBackground, color: colors.text }]}
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
+                placeholderTextColor={colors.secondaryText}
             />
 
             <Button title="Login" onPress={handleLogin} />
 
-            {message ? <Text style={styles.message}>{message}</Text> : null}
+            {message ? <Text style={[styles.message, { color: colors.primary }]}>{message}</Text> : null}
 
             <Button
                 title="Go to Register"

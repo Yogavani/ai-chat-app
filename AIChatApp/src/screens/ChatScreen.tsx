@@ -18,6 +18,7 @@ import {
 } from "../services/socket";
 import API from "../services/api";
 import { useRef } from "react";
+import { useAppTheme } from "../theme/ThemeContext";
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, "Chat">;
 
@@ -32,20 +33,39 @@ type Message = {
   message: string;
   created_at?: string;
   client_created_at?: number;
+  is_seen?: boolean;
+  seen_at?: string;
 };
 
-const dedupeMessages = (items: Message[]) => {
-  const seen = new Set<number>();
-  const result: Message[] = [];
+const isMessageSeen = (item: Message) => {
+  return Boolean(
+    item?.is_seen ||
+      item?.seen_at ||
+      (typeof (item as any)?.status === "string" &&
+        (item as any).status.toLowerCase() === "seen")
+  );
+};
+
+const mergeMessages = (items: Message[]) => {
+  const byId = new Map<number, Message>();
 
   for (const item of items) {
     if (typeof item?.id !== "number") continue;
-    if (seen.has(item.id)) continue;
-    seen.add(item.id);
-    result.push(item);
+    const existing = byId.get(item.id);
+    if (!existing) {
+      byId.set(item.id, item);
+      continue;
+    }
+
+    byId.set(item.id, {
+      ...existing,
+      ...item,
+      is_seen: isMessageSeen(existing) || isMessageSeen(item),
+      seen_at: item.seen_at ?? existing.seen_at
+    });
   }
 
-  return result;
+  return Array.from(byId.values());
 };
 
 const getMessageDate = (message: Message) => {
@@ -81,13 +101,24 @@ const getDateLabel = (date: Date) => {
   });
 };
 
+const toNumberOrNull = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
 const ChatScreen = ({ route }: Props) => {
+  const { colors } = useAppTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [senderId, setSenderId] = useState<number | null>(null);
+  const [seenMessageIds, setSeenMessageIds] = useState<Set<number>>(new Set());
+  const [isReceiverTyping, setIsReceiverTyping] = useState(false);
+  const [isReceiverOnline, setIsReceiverOnline] = useState(false);
+  const [typingDots, setTypingDots] = useState(".");
   const { receiverId, receiverName } = route.params;
   const flatListRef = useRef<FlatList>(null);
   const shouldAutoScrollRef = useRef(true);
+  const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     loadSenderId();
@@ -98,6 +129,39 @@ const ChatScreen = ({ route }: Props) => {
       fetchMessages();
     }
   }, [senderId, receiverId]);
+
+  useEffect(() => {
+    if (!senderId) return;
+
+    const incomingUnreadIds = messages
+      .filter(
+        (item) =>
+          item.sender_id === receiverId &&
+          item.receiver_id === senderId &&
+          !seenMessageIds.has(item.id)
+      )
+      .map((item) => item.id);
+
+    if (incomingUnreadIds.length === 0) return;
+
+    socket.emit("messages-seen", {
+      messageIds: incomingUnreadIds,
+      fromUserId: senderId,
+      toUserId: receiverId
+    });
+
+    socket.emit("message-seen", {
+      messageIds: incomingUnreadIds,
+      fromUserId: senderId,
+      toUserId: receiverId
+    });
+
+    setSeenMessageIds((prev) => {
+      const next = new Set(prev);
+      incomingUnreadIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [messages, senderId, receiverId, seenMessageIds]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -144,29 +208,173 @@ const ChatScreen = ({ route }: Props) => {
       if (!isCurrentChatMessage) return;
 
       setMessages((prev) => {
-        return dedupeMessages([
+        return mergeMessages([
           ...prev,
           { ...msg, client_created_at: Date.now() }
         ]);
       });
+
+      if (msg.sender_id === receiverId && msg.receiver_id === senderId) {
+        socket.emit("messages-seen", {
+          messageIds: [msg.id],
+          fromUserId: senderId,
+          toUserId: receiverId
+        });
+        socket.emit("message-seen", {
+          messageIds: [msg.id],
+          fromUserId: senderId,
+          toUserId: receiverId
+        });
+        setSeenMessageIds((prev) => {
+          const next = new Set(prev);
+          next.add(msg.id);
+          return next;
+        });
+      }
+    };
+
+    const onTyping = (payload: any) => {
+      console.log("SOCKET TYPING EVENT:", payload);
+      const fromUserId = toNumberOrNull(
+        payload?.fromUserId ?? payload?.sender_id ?? payload?.userId
+      );
+      const toUserId = toNumberOrNull(payload?.toUserId ?? payload?.receiver_id);
+
+      if (
+        fromUserId === receiverId &&
+        (toUserId === null || toUserId === senderId)
+      ) {
+        setIsReceiverTyping(true);
+      }
+    };
+
+    const onStopTyping = (payload: any) => {
+      console.log("SOCKET STOP TYPING EVENT:", payload);
+      const fromUserId = toNumberOrNull(
+        payload?.fromUserId ?? payload?.sender_id ?? payload?.userId
+      );
+      const toUserId = toNumberOrNull(payload?.toUserId ?? payload?.receiver_id);
+
+      if (
+        fromUserId === receiverId &&
+        (toUserId === null || toUserId === senderId)
+      ) {
+        setIsReceiverTyping(false);
+      }
+    };
+
+    const onUserStatus = (payload: any) => {
+      if (payload?.userId === receiverId) {
+        setIsReceiverOnline(Boolean(payload?.online));
+      }
+    };
+
+    const onUserOnline = (payload: any) => {
+      if (payload?.userId === receiverId) {
+        setIsReceiverOnline(true);
+      }
+    };
+
+    const onUserOffline = (payload: any) => {
+      if (payload?.userId === receiverId) {
+        setIsReceiverOnline(false);
+      }
+    };
+
+    const onMessageSeen = (payload: any) => {
+      const ids: number[] = [];
+
+      if (Array.isArray(payload?.messageIds)) {
+        payload.messageIds.forEach((id: unknown) => {
+          const parsed = Number(id);
+          if (!Number.isNaN(parsed)) ids.push(parsed);
+        });
+      }
+
+      const singleId = Number(payload?.messageId);
+      if (!Number.isNaN(singleId)) {
+        ids.push(singleId);
+      }
+
+      if (ids.length === 0) return;
+
+      setSeenMessageIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.add(id));
+        return next;
+      });
+
+      setMessages((prev) =>
+        prev.map((item) =>
+          ids.includes(item.id) ? { ...item, is_seen: true } : item
+        )
+      );
     };
 
     socket.on("connect", onConnect);
     socket.on("connect_error", onConnectError);
     socket.on("new-message", onNewMessage);
+    socket.on("typing", onTyping);
+    socket.on("stop-typing", onStopTyping);
+    socket.on("user-status", onUserStatus);
+    socket.on("user-online", onUserOnline);
+    socket.on("user-offline", onUserOffline);
+    socket.on("message-seen", onMessageSeen);
+    socket.on("messages-seen", onMessageSeen);
 
     if (socket.connected) {
       onConnect();
     } else {
       ensureSocketConnection();
     }
+
+    socket.emit("presence:watch", {
+      watcherId: senderId,
+      targetUserId: receiverId
+    });
+    socket.emit("get-user-status", { userId: receiverId });
   
     return () => {
+      socket.emit("stop-typing", {
+        fromUserId: senderId,
+        toUserId: receiverId
+      });
       socket.off("connect", onConnect);
       socket.off("connect_error", onConnectError);
       socket.off("new-message", onNewMessage);
+      socket.off("typing", onTyping);
+      socket.off("stop-typing", onStopTyping);
+      socket.off("user-status", onUserStatus);
+      socket.off("user-online", onUserOnline);
+      socket.off("user-offline", onUserOffline);
+      socket.off("message-seen", onMessageSeen);
+      socket.off("messages-seen", onMessageSeen);
+      if (typingStopTimerRef.current) {
+        clearTimeout(typingStopTimerRef.current);
+        typingStopTimerRef.current = null;
+      }
     };
   }, [senderId, receiverId]);
+
+  useEffect(() => {
+    console.log("TYPING STATE:", isReceiverTyping);
+  }, [isReceiverTyping]);
+
+  useEffect(() => {
+    if (!isReceiverTyping) {
+      setTypingDots(".");
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setTypingDots((prev) => {
+        if (prev === "...") return ".";
+        return `${prev}.`;
+      });
+    }, 350);
+
+    return () => clearInterval(interval);
+  }, [isReceiverTyping]);
 
   const loadSenderId = async () => {
     try {
@@ -202,7 +410,14 @@ const ChatScreen = ({ route }: Props) => {
           client_created_at: item.client_created_at ?? Date.now()
         })
       );
-      setMessages(dedupeMessages(normalizedMessages));
+      setMessages(mergeMessages(normalizedMessages));
+      setSeenMessageIds(() => {
+        const next = new Set<number>();
+        normalizedMessages.forEach((item) => {
+          if (isMessageSeen(item)) next.add(item.id);
+        });
+        return next;
+      });
     } catch (error) {
       console.log("Fetch messages error:", error);
     }
@@ -222,11 +437,44 @@ const ChatScreen = ({ route }: Props) => {
         ...response.data,
         client_created_at: Date.now()
       };
-      setMessages((prev) => dedupeMessages([...prev, newMessage]));
+      setMessages((prev) => mergeMessages([...prev, newMessage]));
       setText("");
+      socket.emit("stop-typing", {
+        fromUserId: senderId,
+        toUserId: receiverId
+      });
     } catch (error) {
       console.log("Send message error:", error);
     }
+  };
+
+  const handleTextChange = (value: string) => {
+    setText(value);
+    if (senderId === null) return;
+
+    if (value.trim().length > 0) {
+      socket.emit("typing", {
+        fromUserId: senderId,
+        toUserId: receiverId
+      });
+    } else {
+      socket.emit("stop-typing", {
+        fromUserId: senderId,
+        toUserId: receiverId
+      });
+    }
+
+    if (typingStopTimerRef.current) {
+      clearTimeout(typingStopTimerRef.current);
+    }
+
+    typingStopTimerRef.current = setTimeout(() => {
+      socket.emit("stop-typing", {
+        fromUserId: senderId,
+        toUserId: receiverId
+      });
+      typingStopTimerRef.current = null;
+    }, 1200);
   };
 
   const messagesWithDate = useMemo(() => {
@@ -245,17 +493,33 @@ const ChatScreen = ({ route }: Props) => {
     });
   }, [messages]);
 
+  const latestOutgoingMessageId = useMemo(() => {
+    if (!senderId) return null;
+    let latestId: number | null = null;
+
+    for (const item of messages) {
+      if (item.sender_id === senderId && item.receiver_id === receiverId) {
+        latestId = item.id;
+      }
+    }
+
+    return latestId;
+  }, [messages, senderId, receiverId]);
+
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>{receiverName}</Text>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>{receiverName}</Text>
+        <Text style={[styles.headerSubtitle, { color: colors.secondaryText }]}>
+          {isReceiverOnline ? "online" : "offline"}
+        </Text>
       </View>
 
-      <View style={styles.chatBody}>
+      <View style={[styles.chatBody, { backgroundColor: colors.background }]}>
         <FlatList
           ref={flatListRef}
           data={messagesWithDate}
@@ -270,6 +534,22 @@ const ChatScreen = ({ route }: Props) => {
               flatListRef.current?.scrollToEnd({ animated: true });
             }
           }}
+          ListFooterComponent={
+            isReceiverTyping ? (
+              <View
+                style={[
+                  styles.messageBubble,
+                  styles.theirMessageBubble,
+                  { backgroundColor: colors.card },
+                  styles.typingBubble
+                ]}
+              >
+                <Text style={[styles.messageText, styles.theirMessageText, { color: colors.text }]}>
+                  {`Typing${typingDots}`}
+                </Text>
+              </View>
+            ) : null
+          }
           onScroll={(event) => {
             const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
             const distanceFromBottom =
@@ -280,16 +560,16 @@ const ChatScreen = ({ route }: Props) => {
           renderItem={({ item }) => (
             <>
               {item.showDateHeader ? (
-                <View style={styles.dateChip}>
-                  <Text style={styles.dateChipText}>{item.dateLabel}</Text>
+                <View style={[styles.dateChip, { backgroundColor: colors.chipBackground }]}>
+                  <Text style={[styles.dateChipText, { color: colors.chipText }]}>{item.dateLabel}</Text>
                 </View>
               ) : null}
               <View
                 style={[
                   styles.messageBubble,
                   item.sender_id === senderId
-                    ? styles.myMessageBubble
-                    : styles.theirMessageBubble
+                    ? [styles.myMessageBubble, { backgroundColor: colors.primary }]
+                    : [styles.theirMessageBubble, { backgroundColor: colors.card }]
                 ]}
               >
                 <Text
@@ -297,27 +577,42 @@ const ChatScreen = ({ route }: Props) => {
                     styles.messageText,
                     item.sender_id === senderId
                       ? styles.myMessageText
-                      : styles.theirMessageText
+                      : [styles.theirMessageText, { color: colors.text }]
                   ]}
                 >
                   {item.message}
                 </Text>
+                {item.sender_id === senderId &&
+                item.id === latestOutgoingMessageId ? (
+                  <Text style={styles.messageStatusText}>
+                    {seenMessageIds.has(item.id) || isMessageSeen(item)
+                      ? "Seen"
+                      : "Sent"}
+                  </Text>
+                ) : null}
               </View>
             </>
           )}
         />
       </View>
 
-      <View style={styles.inputRow}>
+      <View style={[styles.inputRow, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              borderColor: colors.border,
+              backgroundColor: colors.inputBackground,
+              color: colors.text
+            }
+          ]}
           value={text}
-          onChangeText={setText}
+          onChangeText={handleTextChange}
           placeholder="Type a message..."
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor={colors.secondaryText}
         />
 
-        <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
+        <TouchableOpacity style={[styles.sendButton, { backgroundColor: colors.primary }]} onPress={sendMessage}>
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
@@ -343,9 +638,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827"
   },
+  headerSubtitle: {
+    marginTop: 2,
+    fontSize: 13,
+    color: "#4b5563"
+  },
   chatBody: {
     flex: 1,
     backgroundColor: "#f3f4f6"
+  },
+  typingBubble: {
+    maxWidth: 90,
+    minWidth: 48
   },
   messagesContent: {
     paddingHorizontal: 12,
@@ -427,5 +731,11 @@ const styles = StyleSheet.create({
   sendButtonText: {
     color: "#ffffff",
     fontWeight: "600"
+  },
+  messageStatusText: {
+    marginTop: 4,
+    fontSize: 11,
+    textAlign: "right",
+    color: "#dbeafe"
   }
 });

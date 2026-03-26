@@ -89,3 +89,18 @@ exports.createUser = (user) => {
     });
   
   };
+
+  exports.updateProfileImage = (userId, imagePath) => {
+
+    return new Promise((resolve, reject) => {
+
+      const query = "UPDATE users SET avatar = ? WHERE id = ?";
+
+      db.query(query, [imagePath, userId], (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
+
+    });
+
+  };

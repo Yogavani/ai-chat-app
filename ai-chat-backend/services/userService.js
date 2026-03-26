@@ -72,4 +72,20 @@ exports.sendMessage = async (data) => {
     return messages;
   
   };
+
+  exports.uploadProfileImage = async (userId, imagePath) => {
+
+    const result = await userDao.updateProfileImage(userId, imagePath);
+
+    if (!result.affectedRows) {
+      throw { message: "User not found" };
+    }
+
+    return {
+      message: "Profile image uploaded successfully",
+      imagePath,
+      avatar: imagePath
+    };
+
+  };
   

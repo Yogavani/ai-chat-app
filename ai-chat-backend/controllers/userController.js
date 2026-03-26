@@ -1,4 +1,6 @@
 const userService = require("../services/userService");
+const fs = require("fs");
+const path = require("path");
 
 exports.getUsers = async (request, reply) => {
   try {
@@ -84,3 +86,45 @@ exports.getMessages = async (req, reply) => {
     }
   
   };
+
+exports.uploadProfileImage = async (request, reply) => {
+  try {
+    const { userId } = request.params;
+    const { image } = request.body || {};
+
+    if (!image || typeof image !== "string") {
+      return reply.code(400).send({
+        message: "Image is required in base64 data URL format"
+      });
+    }
+
+    const matches = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!matches) {
+      return reply.code(400).send({
+        message: "Invalid image format. Use data:image/<type>;base64,<data>"
+      });
+    }
+
+    const mimeType = matches[1];
+    const base64Data = matches[2];
+    const extension = mimeType.split("/")[1] || "png";
+
+    const uploadsDir = path.join(process.cwd(), "uploads", "profile-images");
+    fs.mkdirSync(uploadsDir, { recursive: true });
+
+    const fileName = `user-${userId}-${Date.now()}.${extension}`;
+    const filePath = path.join(uploadsDir, fileName);
+    fs.writeFileSync(filePath, base64Data, "base64");
+
+    const imagePath = `/uploads/profile-images/${fileName}`;
+    const result = await userService.uploadProfileImage(userId, imagePath);
+
+    return {
+      ...result,
+      imageUrl: imagePath
+    };
+  } catch (error) {
+    const statusCode = error && error.message === "User not found" ? 404 : 500;
+    reply.code(statusCode).send(error);
+  }
+};

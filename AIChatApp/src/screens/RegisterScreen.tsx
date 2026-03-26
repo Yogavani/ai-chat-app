@@ -3,6 +3,7 @@ import { View, TextInput, Button, StyleSheet, Text } from "react-native";
 import API from "../services/api";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/navigation";
+import { useAppTheme } from "../theme/ThemeContext";
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -13,6 +14,7 @@ type Props = {
   };
   
 const RegisterScreen = ({ navigation } : Props) => {
+    const { colors } = useAppTheme();
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -36,32 +38,35 @@ const RegisterScreen = ({ navigation } : Props) => {
         };
     }
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
 
             <TextInput
                 placeholder="Name"
-                style={styles.input}
+                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.inputBackground, color: colors.text }]}
                 value={name}
                 onChangeText={setName}
+                placeholderTextColor={colors.secondaryText}
             />
 
             <TextInput
                 placeholder="Email"
-                style={styles.input}
+                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.inputBackground, color: colors.text }]}
                 value={email}
                 onChangeText={setEmail}
+                placeholderTextColor={colors.secondaryText}
             />
 
             <TextInput
                 placeholder="Password"
-                style={styles.input}
+                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.inputBackground, color: colors.text }]}
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
+                placeholderTextColor={colors.secondaryText}
             />
             <Button title="Register" onPress={handleRegister} />
-            {message ? <Text style={styles.message}>{message}</Text> : null}
-          <View style={styles.input}>
+            {message ? <Text style={[styles.message, { color: colors.primary }]}>{message}</Text> : null}
+          <View style={[styles.input, { borderColor: colors.border, backgroundColor: colors.inputBackground }]}>
           <Button
                 title="Go to Login"
                 onPress={() => navigation.navigate("Login")}

@@ -8,6 +8,7 @@ async function userRoutes(server, options) {
   server.post(USER.LOGIN, userHandler.loginUser);
   server.post(USER.SEND_MESSAGE, userHandler.sendMessage);
   server.get(USER.RECEIVE_MESSAGE, userHandler.getMessages);
+  server.post(USER.UPLOAD_PROFILE_IMAGE, userHandler.uploadProfileImage);
 }
 
 module.exports = userRoutes;
