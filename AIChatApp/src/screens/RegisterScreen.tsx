@@ -7,7 +7,7 @@ import { useAppTheme } from "../theme/ThemeContext";
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
-  "Home"
+  "Register"
 >;
 type Props = {
     navigation: HomeScreenNavigationProp;
@@ -28,9 +28,8 @@ const RegisterScreen = ({ navigation } : Props) => {
             });
 
             console.log("Register response:", response.data);
-
             setMessage("User registered successfully!");
-
+            navigation.navigate("Login")
         } catch (error :any) {
 
             console.log(error.response?.data || error.message);

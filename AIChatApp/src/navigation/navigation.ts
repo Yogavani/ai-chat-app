@@ -4,15 +4,21 @@ export interface User {
     email: string;
 }
 
+export type MainTabParamList = {
+    Home: undefined;
+    AIChat: undefined;
+    Explore: undefined;
+    Settings: undefined;
+};
 
 export type RootStackParamList = {
     Login: undefined;
     Register: undefined;
-    Home: undefined;
-    Settings: undefined;
+    MainTabs: undefined;
     Chat: { 
         receiverId: number;
         receiverName: string;
+        receiverProfileImage?: string;
      };
     Profile: {
         userId: number;

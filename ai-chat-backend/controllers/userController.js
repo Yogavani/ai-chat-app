@@ -48,6 +48,14 @@ exports.registerUser = async (request, reply) => {
       console.log("sendMessagesendMessage", data);
   
       const result = await userService.sendMessage(data);
+
+      if (result && result.isAIFlow) {
+        if (req.server && req.server.io) {
+          req.server.io.to(String(data.sender_id)).emit("new-message", result.userMessage);
+          req.server.io.to(String(data.sender_id)).emit("new-message", result.aiMessage);
+        }
+        return result.aiMessage;
+      }
   
       const newMessage = {
         id: result.insertId || result.messageId,
@@ -126,5 +134,71 @@ exports.uploadProfileImage = async (request, reply) => {
   } catch (error) {
     const statusCode = error && error.message === "User not found" ? 404 : 500;
     reply.code(statusCode).send(error);
+  }
+};
+
+exports.updateAbout = async (request, reply) => {
+  try {
+    const { userId } = request.params;
+    const { about } = request.body || {};
+
+    if (typeof about !== "string") {
+      return reply.code(400).send({
+        message: "about is required and must be a string"
+      });
+    }
+
+    const result = await userService.updateAbout(userId, about.trim());
+    return result;
+  } catch (error) {
+    const statusCode = error && error.message === "User not found" ? 404 : 500;
+    reply.code(statusCode).send(error);
+  }
+};
+
+exports.deleteAccount = async (request, reply) => {
+  try {
+    const { userId } = request.params;
+    const { is_delete } = request.body || {};
+    const result = await userService.deleteAccount(userId, is_delete);
+    console.log("deleteAccount controller",result,is_delete)
+    return result;
+  } catch (error) {
+    const statusCode = error && error.message === "User not found" ? 404 : 500;
+    reply.code(statusCode).send(error);
+  }
+};
+
+exports.rewriteMessage = async (request, reply) => {
+  try {
+    const { message } = request.body || {};
+
+    if (typeof message !== "string" || !message.trim()) {
+      return reply.code(400).send({
+        message: "message is required and must be a non-empty string"
+      });
+    }
+
+    const result = await userService.rewriteMessage(message.trim());
+    return result;
+  } catch (error) {
+    reply.code(500).send(error);
+  }
+};
+
+exports.suggestReplies = async (request, reply) => {
+  try {
+    const { message } = request.body || {};
+
+    if (typeof message !== "string" || !message.trim()) {
+      return reply.code(400).send({
+        message: "message is required and must be a non-empty string"
+      });
+    }
+
+    const result = await userService.suggestReplies(message.trim());
+    return result;
+  } catch (error) {
+    reply.code(500).send(error);
   }
 };

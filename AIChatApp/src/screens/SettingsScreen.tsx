@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from "react-native";
@@ -16,21 +17,15 @@ import { getUsers } from "../services/userService";
 import API from "../services/api";
 import { launchImageLibrary } from "react-native-image-picker";
 import { useAppTheme } from "../theme/ThemeContext";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { RootStackParamList } from "../navigation/navigation";
 
 type LanguageOption = "English" | "Hindi" | "Tamil";
 
 const LANGUAGE_KEY = "appLanguage";
 const PROFILE_IMAGE_KEY = "profileImage";
-
-type SettingsNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
-  "Settings"
->;
+const PROFILE_ABOUT_KEY = "profileAbout";
 
 type Props = {
-  navigation: SettingsNavigationProp;
+  navigation: any;
   onLogoutSuccess: () => void;
 };
 
@@ -40,8 +35,11 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
   const [profileName, setProfileName] = useState("User");
   const [profileEmail, setProfileEmail] = useState("");
   const [profileAbout, setProfileAbout] = useState("Hey there! I am using AIChatApp.");
+  const [aboutDraft, setAboutDraft] = useState("Hey there! I am using AIChatApp.");
   const [profileImage, setProfileImage] = useState("");
   const [language, setLanguage] = useState<LanguageOption>("English");
+  const [isSavingAbout, setIsSavingAbout] = useState(false);
+  const [isEditingAbout, setIsEditingAbout] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -62,11 +60,12 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
 
   const loadSettings = async () => {
     try {
-      const [storedUserId, storedLanguage, storedProfileImage] =
+      const [storedUserId, storedLanguage, storedProfileImage, storedProfileAbout] =
         await Promise.all([
           AsyncStorage.getItem("userId"),
           AsyncStorage.getItem(LANGUAGE_KEY),
-          AsyncStorage.getItem(PROFILE_IMAGE_KEY)
+          AsyncStorage.getItem(PROFILE_IMAGE_KEY),
+          AsyncStorage.getItem(PROFILE_ABOUT_KEY)
         ]);
 
       const parsedUserId = storedUserId ? Number(storedUserId) : null;
@@ -88,7 +87,13 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
         if (me) {
           setProfileName(me.name || "User");
           setProfileEmail(me.email || "");
-          setProfileAbout(me.about || me.bio || "Hey there! I am using AIChatApp.");
+          const resolvedAbout =
+            me.about ||
+            me.bio ||
+            storedProfileAbout ||
+            "Hey there! I am using AIChatApp.";
+          setProfileAbout(resolvedAbout);
+          setAboutDraft(resolvedAbout);
 
           const remoteImage =
             me.profileImage ?? me.avatar ?? me.profile_pic ?? storedProfileImage ?? "";
@@ -96,6 +101,9 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
             setProfileImage(toAbsoluteImageUrl(remoteImage));
           }
         }
+      } else if (storedProfileAbout) {
+        setProfileAbout(storedProfileAbout);
+        setAboutDraft(storedProfileAbout);
       }
     } catch (error) {
       console.log("Load settings error:", error);
@@ -259,10 +267,11 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
           onPress: async () => {
             try {
               if (currentUserId) {
-                await API.delete(`/delete-account/${currentUserId}`);
+                await API.post(`/delete-account/${currentUserId}` ,{ is_delete: 1 });
               }
               await AsyncStorage.multiRemove(["token", "userId"]);
-              Alert.alert("Done", "Account deleted. Please restart app.");
+              onLogoutSuccess();
+
             } catch (error: any) {
               Alert.alert(
                 "Not Completed",
@@ -286,6 +295,66 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
   const handleLogout = async () => {
     await AsyncStorage.multiRemove(["token", "userId"]);
     onLogoutSuccess();
+  };
+
+  const saveAbout = async () => {
+    const nextAbout = aboutDraft.trim();
+    if (!nextAbout) {
+      Alert.alert("Invalid About", "About cannot be empty.");
+      return;
+    }
+
+    setIsSavingAbout(true);
+
+    try {
+      if (!currentUserId) {
+        Alert.alert("Error", "Please try again later.");
+        return;
+      }
+
+      const requestCandidates = [
+        () => API.post(`/update-about/${currentUserId}`, { about: nextAbout }),
+        () => API.patch(`/update-about/${currentUserId}`, { about: nextAbout }),
+        () => API.put(`/update-about/${currentUserId}`, { about: nextAbout }),
+        () => API.post("/update-about", { userId: currentUserId, about: nextAbout }),
+        () => API.patch(`/update-profile/${currentUserId}`, { about: nextAbout }),
+        () => API.put(`/update-profile/${currentUserId}`, { about: nextAbout }),
+        () => API.patch(`/users/${currentUserId}`, { about: nextAbout }),
+        () => API.put(`/users/${currentUserId}`, { about: nextAbout })
+      ];
+
+      let updated = false;
+      let lastError: any = null;
+      for (const request of requestCandidates) {
+        try {
+          const response = await request();
+          if (response?.status >= 200 && response?.status < 300) {
+            updated = true;
+            break;
+          }
+        } catch (error: any) {
+          lastError = error;
+        }
+      }
+
+      if (!updated) {
+        console.log("Save about error:", lastError?.response?.data || lastError);
+        Alert.alert("Error", "Please try again later.");
+        return;
+      }
+
+      setProfileAbout(nextAbout);
+      setAboutDraft(nextAbout);
+      await AsyncStorage.setItem(PROFILE_ABOUT_KEY, nextAbout);
+      setIsEditingAbout(false);
+
+      Alert.alert("Success", "About saved successfully.");
+    } catch (error: any) {
+      console.log("Save about error:", error?.response?.data || error);
+      Alert.alert("Error", "Please try again later.");
+    } finally {
+      setIsSavingAbout(false);
+    }
   };
 
   return (
@@ -318,6 +387,67 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
       </View>
 
       <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <View style={[styles.aboutHeaderRow, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, styles.aboutSectionTitle, { color: colors.text }]}>About</Text>
+          {!isEditingAbout ? (
+            <TouchableOpacity
+              style={[styles.aboutEditButton, { backgroundColor: colors.chipBackground }]}
+              onPress={() => {
+                setAboutDraft(profileAbout);
+                setIsEditingAbout(true);
+              }}
+            >
+              <Text style={[styles.aboutEditButtonText, { color: colors.primary }]}>Edit</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {!isEditingAbout ? (
+          <Text style={[styles.aboutValueText, { color: colors.text }]}>{profileAbout}</Text>
+        ) : (
+          <View>
+            <TextInput
+              style={[
+                styles.aboutInput,
+                { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }
+              ]}
+              value={aboutDraft}
+              onChangeText={setAboutDraft}
+              placeholder="Write something about yourself"
+              placeholderTextColor={colors.secondaryText}
+              multiline
+              maxLength={160}
+              textAlignVertical="top"
+              editable={!isSavingAbout}
+            />
+            <View style={styles.aboutActionsRow}>
+              <TouchableOpacity
+                style={[styles.aboutCancelButton, { borderColor: colors.border }]}
+                onPress={() => {
+                  setAboutDraft(profileAbout);
+                  setIsEditingAbout(false);
+                }}
+                disabled={isSavingAbout}
+              >
+                <Text style={[styles.aboutCancelButtonText, { color: colors.secondaryText }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.aboutSaveButton,
+                  { backgroundColor: colors.primary },
+                  isSavingAbout ? styles.aboutSaveButtonDisabled : null
+                ]}
+                onPress={saveAbout}
+                disabled={isSavingAbout}
+              >
+                <Text style={styles.aboutSaveButtonText}>
+                  {isSavingAbout ? "Saving..." : "Save About"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Theme</Text>
         <View style={styles.optionRow}>
           {(["light", "dark"] as const).map((item) => (
@@ -345,7 +475,7 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
           ))}
         </View>
 
-        <Text style={[styles.sectionTitle, styles.sectionSpacing, { color: colors.text }]}>
+        {/* <Text style={[styles.sectionTitle, styles.sectionSpacing, { color: colors.text }]}>
           App Language
         </Text>
         <View style={styles.optionRow}>
@@ -372,7 +502,7 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </View> */}
       </View>
 
       <View style={[styles.card, { backgroundColor: colors.card }]}>
@@ -471,14 +601,80 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: "center"
   },
+  aboutInput: {
+    minHeight: 96,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    marginBottom: 10
+  },
+  aboutSaveButton: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 8,
+    marginBottom: 16
+  },
+  aboutSaveButtonDisabled: {
+    opacity: 0.7
+  },
+  aboutSaveButtonText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700"
+  },
   sectionTitle: {
     fontSize: 15,
     fontWeight: "700",
     color: "#111827",
     marginBottom: 10
   },
+  aboutSectionTitle: {
+    marginBottom: 0
+  },
+  aboutHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: 12,
+    borderBottomWidth: 1
+  },
+  aboutEditButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16
+  },
+  aboutEditButtonText: {
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  aboutValueText: {
+    fontSize: 16,
+    lineHeight: 22,
+    marginTop: 12,
+    marginBottom: 16
+  },
   sectionSpacing: {
     marginTop: 16
+  },
+  aboutActionsRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 16
+  },
+  aboutCancelButton: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9
+  },
+  aboutCancelButtonText: {
+    fontSize: 13,
+    fontWeight: "600"
   },
   optionRow: {
     flexDirection: "row",

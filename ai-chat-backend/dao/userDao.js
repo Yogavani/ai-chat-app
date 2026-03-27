@@ -104,3 +104,29 @@ exports.createUser = (user) => {
     });
 
   };
+
+  exports.updateAbout = (userId, about) => {
+
+    return new Promise((resolve, reject) => {
+      const query = "UPDATE users SET about = ? WHERE id = ?";
+
+      db.query(query, [about, userId], (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
+    });
+
+  };
+
+  exports.deleteAccount = (userId, is_delete) => {
+
+    return new Promise((resolve, reject) => {
+      const query = "UPDATE users SET is_deleted = ? WHERE id = ? ";
+
+      db.query(query, [is_delete, userId], (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
+    });
+
+  };

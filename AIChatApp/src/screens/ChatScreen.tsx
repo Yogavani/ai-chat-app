@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -7,7 +8,9 @@ import {
   TouchableOpacity,
   FlatList,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Image,
+  ScrollView
 } from "react-native";
 import { RootStackParamList } from "../navigation/navigation";
 import { RouteProp } from "@react-navigation/native";
@@ -19,11 +22,19 @@ import {
 import API from "../services/api";
 import { useRef } from "react";
 import { useAppTheme } from "../theme/ThemeContext";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { toAbsoluteImageUrl } from "../utils/image";
+import { AI_FEATURE_DEFAULTS, AI_FEATURE_KEYS } from "../constants/aiFeatures";
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, "Chat">;
+type ChatScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  "Chat"
+>;
 
 type Props = {
   route: ChatScreenRouteProp;
+  navigation: ChatScreenNavigationProp;
 };
 
 type Message = {
@@ -106,23 +117,175 @@ const toNumberOrNull = (value: unknown) => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
-const ChatScreen = ({ route }: Props) => {
+const buildAIConversationContext = (chatMessages: Message[], currentUserId: number) => {
+  return chatMessages
+    .filter((item) => item.sender_id === currentUserId || item.sender_id === 9999)
+    .slice(-20)
+    .map((item) => ({
+      role: item.sender_id === currentUserId ? "user" : "assistant",
+      content: item.message
+    }));
+};
+
+const ChatScreen = ({ route, navigation }: Props) => {
   const { colors } = useAppTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [senderId, setSenderId] = useState<number | null>(null);
   const [seenMessageIds, setSeenMessageIds] = useState<Set<number>>(new Set());
   const [isReceiverTyping, setIsReceiverTyping] = useState(false);
+  const [isAITyping, setIsAITyping] = useState(false);
+  const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
+  const [isSuggestingReplies, setIsSuggestingReplies] = useState(false);
+  const [aiAutoReplyEnabled, setAIAutoReplyEnabled] = useState<boolean>(
+    AI_FEATURE_DEFAULTS.autoReply
+  );
+  const [aiSuggestionsEnabled, setAISuggestionsEnabled] = useState<boolean>(
+    AI_FEATURE_DEFAULTS.suggestions
+  );
+  const [aiRewriteEnabled, setAIRewriteEnabled] = useState<boolean>(
+    AI_FEATURE_DEFAULTS.rewrite
+  );
   const [isReceiverOnline, setIsReceiverOnline] = useState(false);
   const [typingDots, setTypingDots] = useState(".");
-  const { receiverId, receiverName } = route.params;
+  const { receiverId, receiverName, receiverProfileImage } = route.params;
+  const isAIChat = receiverId === 9999;
   const flatListRef = useRef<FlatList>(null);
   const shouldAutoScrollRef = useRef(true);
   const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiReplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSuggestedMessageIdRef = useRef<number | null>(null);
+  const suggestionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     loadSenderId();
   }, []);
+
+  useEffect(() => {
+    const loadAIFeatures = async () => {
+      const [autoReplyByUserValue, suggestionsByUserValue, rewriteByUserValue] = await Promise.all([
+        AsyncStorage.getItem(AI_FEATURE_KEYS.autoReplyByUser),
+        AsyncStorage.getItem(AI_FEATURE_KEYS.suggestionsByUser),
+        AsyncStorage.getItem(AI_FEATURE_KEYS.rewriteByUser)
+      ]);
+
+      if (autoReplyByUserValue) {
+        try {
+          const parsed = JSON.parse(autoReplyByUserValue) as Record<string, boolean>;
+          const contactValue = parsed[String(receiverId)];
+          if (typeof contactValue === "boolean") {
+            setAIAutoReplyEnabled(contactValue);
+          } else {
+            setAIAutoReplyEnabled(AI_FEATURE_DEFAULTS.autoReply);
+          }
+        } catch (error) {
+          setAIAutoReplyEnabled(AI_FEATURE_DEFAULTS.autoReply);
+        }
+      } else {
+        setAIAutoReplyEnabled(AI_FEATURE_DEFAULTS.autoReply);
+      }
+      if (suggestionsByUserValue) {
+        try {
+          const parsed = JSON.parse(suggestionsByUserValue) as Record<string, boolean>;
+          const contactValue = parsed[String(receiverId)];
+          if (typeof contactValue === "boolean") {
+            setAISuggestionsEnabled(contactValue);
+          } else {
+            setAISuggestionsEnabled(AI_FEATURE_DEFAULTS.suggestions);
+          }
+        } catch (error) {
+          setAISuggestionsEnabled(AI_FEATURE_DEFAULTS.suggestions);
+        }
+      } else {
+        setAISuggestionsEnabled(AI_FEATURE_DEFAULTS.suggestions);
+      }
+
+      if (rewriteByUserValue) {
+        try {
+          const parsed = JSON.parse(rewriteByUserValue) as Record<string, boolean>;
+          const contactValue = parsed[String(receiverId)];
+          if (typeof contactValue === "boolean") {
+            setAIRewriteEnabled(contactValue);
+          } else {
+            setAIRewriteEnabled(AI_FEATURE_DEFAULTS.rewrite);
+          }
+        } catch (error) {
+          setAIRewriteEnabled(AI_FEATURE_DEFAULTS.rewrite);
+        }
+      } else {
+        setAIRewriteEnabled(AI_FEATURE_DEFAULTS.rewrite);
+      }
+    };
+
+    loadAIFeatures();
+  }, [receiverId]);
+
+  useLayoutEffect(() => {
+    const statusText = isAIChat
+      ? isAITyping
+        ? "typing..."
+        : "AI assistant"
+      : isReceiverTyping
+      ? "typing..."
+      : isReceiverOnline
+      ? "online"
+      : "offline";
+
+    const profileImage = toAbsoluteImageUrl(receiverProfileImage || "");
+
+    navigation.setOptions({
+      headerTitleAlign: "left",
+      headerTitle: () => (
+        <View style={styles.navHeaderContent}>
+          {profileImage ? (
+            <Image source={{ uri: profileImage }} style={styles.navAvatar} />
+          ) : (
+            <View
+              style={[
+                styles.navAvatarFallback,
+                { backgroundColor: colors.chipBackground }
+              ]}
+            >
+              <Text style={[styles.navAvatarInitial, { color: colors.primary }]}>
+                {receiverName?.trim()?.charAt(0)?.toUpperCase() || "?"}
+              </Text>
+            </View>
+          )}
+          <View style={styles.navTextWrap}>
+            <Text style={[styles.navNameText, { color: colors.text }]} numberOfLines={1}>
+              {receiverName}
+            </Text>
+            <Text
+              style={[
+                styles.navStatusText,
+                {
+                  color:
+                    (isAIChat && isAITyping) || (!isAIChat && isReceiverTyping)
+                      ? colors.primary
+                      : colors.secondaryText
+                }
+              ]}
+              numberOfLines={1}
+            >
+              {statusText}
+            </Text>
+          </View>
+        </View>
+      )
+    });
+  }, [
+    navigation,
+    receiverName,
+    receiverProfileImage,
+    isAIChat,
+    isAITyping,
+    isReceiverTyping,
+    isReceiverOnline,
+    colors.text,
+    colors.secondaryText,
+    colors.primary,
+    colors.chipBackground
+  ]);
 
   useEffect(() => {
     if (senderId !== null) {
@@ -131,6 +294,7 @@ const ChatScreen = ({ route }: Props) => {
   }, [senderId, receiverId]);
 
   useEffect(() => {
+    if (isAIChat) return;
     if (!senderId) return;
 
     const incomingUnreadIds = messages
@@ -161,7 +325,7 @@ const ChatScreen = ({ route }: Props) => {
       incomingUnreadIds.forEach((id) => next.add(id));
       return next;
     });
-  }, [messages, senderId, receiverId, seenMessageIds]);
+  }, [messages, senderId, receiverId, seenMessageIds, isAIChat]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -176,6 +340,7 @@ const ChatScreen = ({ route }: Props) => {
   }, [messages.length]);
 
   useEffect(() => {
+    if (isAIChat) return;
     if (!senderId) return;
 
     const onConnect = () => {
@@ -353,15 +518,25 @@ const ChatScreen = ({ route }: Props) => {
         clearTimeout(typingStopTimerRef.current);
         typingStopTimerRef.current = null;
       }
+      if (aiReplyTimerRef.current) {
+        clearTimeout(aiReplyTimerRef.current);
+        aiReplyTimerRef.current = null;
+      }
+      if (suggestionDebounceRef.current) {
+        clearTimeout(suggestionDebounceRef.current);
+        suggestionDebounceRef.current = null;
+      }
     };
-  }, [senderId, receiverId]);
+  }, [senderId, receiverId, isAIChat]);
 
   useEffect(() => {
     console.log("TYPING STATE:", isReceiverTyping);
   }, [isReceiverTyping]);
 
+  const showTypingIndicator = isAIChat ? isAITyping : isReceiverTyping;
+
   useEffect(() => {
-    if (!isReceiverTyping) {
+    if (!showTypingIndicator) {
       setTypingDots(".");
       return;
     }
@@ -374,7 +549,7 @@ const ChatScreen = ({ route }: Props) => {
     }, 350);
 
     return () => clearInterval(interval);
-  }, [isReceiverTyping]);
+  }, [showTypingIndicator]);
 
   const loadSenderId = async () => {
     try {
@@ -427,30 +602,133 @@ const ChatScreen = ({ route }: Props) => {
     if (!text.trim()) return;
   
     try {
-      const response = await API.post("/send-message", {
-        sender_id: senderId,
-        receiver_id: receiverId,
-        message: text,
-      });
+      const pendingText = text;
+      if (isAIChat) {
+        setIsAITyping(true);
+      }
+      const requestPayload = isAIChat
+        ? {
+            sender_id: senderId,
+            receiver_id: receiverId,
+            message: pendingText,
+            conversationContext: buildAIConversationContext(messages, senderId)
+          }
+        : {
+            sender_id: senderId,
+            receiver_id: receiverId,
+            message: pendingText
+          };
+
+      const response = await API.post("/send-message", requestPayload);
       console.log("NEW MESSAGESSS:", response.data);
-      const newMessage = {
-        ...response.data,
-        client_created_at: Date.now()
-      };
-      setMessages((prev) => mergeMessages([...prev, newMessage]));
+      const payload =
+        response.data?.data ??
+        response.data?.result ??
+        response.data ??
+        {};
+
+      const isAIFlowResponse = Boolean(
+        payload?.isAIFlow ||
+        payload?.is_ai_flow ||
+        (payload?.userMessage && payload?.aiMessage) ||
+        (payload?.user_message && payload?.ai_message)
+      );
+
+      const userMessagePayload = payload?.userMessage ?? payload?.user_message;
+      const aiMessagePayload = payload?.aiMessage ?? payload?.ai_message;
+
+      if (isAIFlowResponse && userMessagePayload && aiMessagePayload) {
+        const userMessage = {
+          ...userMessagePayload,
+          client_created_at: Date.now()
+        } as Message;
+        const aiMessage = {
+          ...aiMessagePayload,
+          client_created_at: Date.now()
+        } as Message;
+        setMessages((prev) => mergeMessages([...prev, userMessage]));
+
+        const aiReplyDelayMs = 1400;
+        await new Promise<void>((resolve) => {
+          if (aiReplyTimerRef.current) {
+            clearTimeout(aiReplyTimerRef.current);
+          }
+          aiReplyTimerRef.current = setTimeout(() => {
+            setMessages((prev) => mergeMessages([...prev, aiMessage]));
+            setIsAITyping(false);
+            aiReplyTimerRef.current = null;
+            resolve();
+          }, aiReplyDelayMs);
+        });
+      } else {
+        // For AI flow or non-standard payloads, refresh from server source of truth.
+        if (isAIChat) {
+          await fetchMessages();
+        } else {
+          const newMessage = {
+            ...payload,
+            client_created_at: Date.now()
+          } as Message;
+          setMessages((prev) => mergeMessages([...prev, newMessage]));
+        }
+      }
+
       setText("");
-      socket.emit("stop-typing", {
-        fromUserId: senderId,
-        toUserId: receiverId
-      });
-    } catch (error) {
+      setSuggestedReplies([]);
+      if (!isAIChat) {
+        socket.emit("stop-typing", {
+          fromUserId: senderId,
+          toUserId: receiverId
+        });
+      }
+    } catch (error: any) {
       console.log("Send message error:", error);
+      const statusCode = error?.response?.status;
+      const backendMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        "Unable to send message right now.";
+
+      if (isAIChat) {
+        await fetchMessages();
+
+        if (statusCode === 429) {
+          const localRateLimitNotice: Message = {
+            id: -Date.now(),
+            sender_id: receiverId,
+            receiver_id: senderId,
+            message:
+              "Chattr AI is busy right now (rate limit reached). Please wait a few seconds and try again.",
+            client_created_at: Date.now()
+          };
+          setMessages((prev) => mergeMessages([...prev, localRateLimitNotice]));
+        } else {
+          Alert.alert("AI Reply Failed", backendMessage);
+        }
+      } else {
+        Alert.alert("Send Failed", backendMessage);
+      }
+    } finally {
+      if (isAIChat && !aiReplyTimerRef.current) {
+        setIsAITyping(false);
+      }
     }
   };
 
   const handleTextChange = (value: string) => {
     setText(value);
-    if (senderId === null) return;
+    if (!aiSuggestionsEnabled) return;
+
+    if (suggestionDebounceRef.current) {
+      clearTimeout(suggestionDebounceRef.current);
+    }
+    if (value.trim().length > 2) {
+      suggestionDebounceRef.current = setTimeout(() => {
+        fetchSuggestedReplies(value);
+      }, 450);
+    }
+
+    if (senderId === null || isAIChat) return;
 
     if (value.trim().length > 0) {
       socket.emit("typing", {
@@ -475,6 +753,38 @@ const ChatScreen = ({ route }: Props) => {
       });
       typingStopTimerRef.current = null;
     }, 1200);
+  };
+
+  const handleRewriteMessage = async () => {
+    if (!aiRewriteEnabled) return;
+    if (!text.trim()) return;
+
+    try {
+      const response = await API.post("/rewrite-message", {
+        message: text
+      });
+
+      const rewrittenText =
+        response?.data?.rewrittenMessage ??
+        response?.data?.rewritten_message ??
+        response?.data?.message ??
+        response?.data?.data?.rewrittenMessage ??
+        response?.data?.data?.message ??
+        "";
+
+      if (!rewrittenText || typeof rewrittenText !== "string") {
+        Alert.alert("Rewrite Failed", "No rewritten text returned.");
+        return;
+      }
+
+      setText(rewrittenText.trim());
+    } catch (error: any) {
+      const backendMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        "Unable to rewrite message right now.";
+      Alert.alert("Rewrite Failed", backendMessage);
+    }
   };
 
   const messagesWithDate = useMemo(() => {
@@ -506,19 +816,72 @@ const ChatScreen = ({ route }: Props) => {
     return latestId;
   }, [messages, senderId, receiverId]);
 
+  const latestIncomingMessage = useMemo(() => {
+    if (!senderId) return null;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const item = messages[i];
+      if (item.sender_id === receiverId && item.receiver_id === senderId) {
+        return item;
+      }
+    }
+    return null;
+  }, [messages, senderId, receiverId]);
+
+  const fetchSuggestedReplies = async (messageText: string) => {
+    if (!messageText.trim()) return;
+
+    try {
+      setIsSuggestingReplies(true);
+      const response = await API.post("/suggest-replies", {
+        message: messageText
+      });
+
+      const payload = response?.data?.data ?? response?.data ?? {};
+      const replies =
+        payload?.suggestions ??
+        payload?.suggested_replies ??
+        payload?.replies ??
+        payload?.suggestedReplies ??
+        payload?.response ??
+        [];
+
+      const normalizeReply = (item: any) => {
+        if (typeof item === "string") return item.trim();
+        if (typeof item?.text === "string") return item.text.trim();
+        if (typeof item?.message === "string") return item.message.trim();
+        return "";
+      };
+
+      const normalizedReplies = Array.isArray(replies)
+        ? replies.map(normalizeReply).filter((item) => item.length > 0).slice(0, 3)
+        : [];
+
+      setSuggestedReplies(normalizedReplies);
+    } catch (error) {
+      setSuggestedReplies([]);
+    } finally {
+      setIsSuggestingReplies(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!aiSuggestionsEnabled) {
+      setSuggestedReplies([]);
+      return;
+    }
+    if (!latestIncomingMessage) return;
+    if (lastSuggestedMessageIdRef.current === latestIncomingMessage.id) return;
+
+    lastSuggestedMessageIdRef.current = latestIncomingMessage.id;
+    fetchSuggestedReplies(latestIncomingMessage.message);
+  }, [latestIncomingMessage, aiSuggestionsEnabled]);
+
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
-      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>{receiverName}</Text>
-        <Text style={[styles.headerSubtitle, { color: colors.secondaryText }]}>
-          {isReceiverOnline ? "online" : "offline"}
-        </Text>
-      </View>
-
       <View style={[styles.chatBody, { backgroundColor: colors.background }]}>
         <FlatList
           ref={flatListRef}
@@ -535,7 +898,7 @@ const ChatScreen = ({ route }: Props) => {
             }
           }}
           ListFooterComponent={
-            isReceiverTyping ? (
+            showTypingIndicator ? (
               <View
                 style={[
                   styles.messageBubble,
@@ -545,7 +908,7 @@ const ChatScreen = ({ route }: Props) => {
                 ]}
               >
                 <Text style={[styles.messageText, styles.theirMessageText, { color: colors.text }]}>
-                  {`Typing${typingDots}`}
+                  {isAIChat ? `Chattr AI is typing${typingDots}` : `Typing${typingDots}`}
                 </Text>
               </View>
             ) : null
@@ -596,6 +959,49 @@ const ChatScreen = ({ route }: Props) => {
         />
       </View>
 
+      {aiSuggestionsEnabled && (isSuggestingReplies || suggestedReplies.length > 0) ? (
+        <View style={[styles.inputRow, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+          <View
+            style={[
+              styles.suggestionWrapper,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border
+              }
+            ]}
+          >
+            {isSuggestingReplies ? (
+              <Text style={[styles.suggestionLoadingText, { color: colors.secondaryText }]}>
+                Suggesting replies...
+              </Text>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.suggestionRow}
+              >
+                {suggestedReplies.map((suggestion, index) => (
+                  <TouchableOpacity
+                    key={`reply-${index}`}
+                    style={[
+                      styles.suggestionChip,
+                      { backgroundColor: colors.chipBackground, borderColor: colors.border }
+                    ]}
+                    onPress={() => {
+                      setText(suggestion);
+                    }}
+                  >
+                    <Text style={[styles.suggestionText, { color: colors.text }]} numberOfLines={1}>
+                      {suggestion}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      ) : null}
+
       <View style={[styles.inputRow, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
         <TextInput
           style={[
@@ -612,6 +1018,23 @@ const ChatScreen = ({ route }: Props) => {
           placeholderTextColor={colors.secondaryText}
         />
 
+        {aiRewriteEnabled ? (
+          <TouchableOpacity
+            style={[styles.rewriteButton, { borderColor: colors.border }]}
+            onPress={handleRewriteMessage}
+            disabled={!text.trim()}
+          >
+            <Text
+              style={[
+                styles.rewriteButtonText,
+                { color: text.trim() ? colors.primary : colors.secondaryText }
+              ]}
+            >
+              ✦✦✦
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
         <TouchableOpacity style={[styles.sendButton, { backgroundColor: colors.primary }]} onPress={sendMessage}>
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
@@ -626,22 +1049,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1
   },
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-    backgroundColor: "#ffffff"
+  navHeaderContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    maxWidth: 230
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827"
+  navAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10
   },
-  headerSubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: "#4b5563"
+  navAvatarFallback: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  navAvatarInitial: {
+    fontSize: 15,
+    fontWeight: "700"
+  },
+  navTextWrap: {
+    flexShrink: 1
+  },
+  navNameText: {
+    fontSize: 16,
+    fontWeight: "700"
+  },
+  navStatusText: {
+    marginTop: 1,
+    fontSize: 12
   },
   chatBody: {
     flex: 1,
@@ -710,6 +1150,32 @@ const styles = StyleSheet.create({
     borderTopColor: "#e5e7eb",
     backgroundColor: "#ffffff"
   },
+  suggestionWrapper: {
+    width: "100%",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 8
+  },
+  suggestionRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center"
+  },
+  suggestionChip: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    minWidth: 90
+  },
+  suggestionText: {
+    fontSize: 13,
+    textAlign: "center"
+  },
+  suggestionLoadingText: {
+    fontSize: 13
+  },
   input: {
     flex: 1,
     borderWidth: 1,
@@ -721,6 +1187,20 @@ const styles = StyleSheet.create({
     color: "#111827",
     backgroundColor: "#f9fafb",
     marginRight: 8
+  },
+  rewriteButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8
+  },
+  rewriteButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.5
   },
   sendButton: {
     backgroundColor: "#2563eb",

@@ -1,19 +1,15 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { View, Text, FlatList, StyleSheet ,TouchableOpacity, Image } from "react-native";
 import { getUsers } from "../services/userService";
-import { RootStackParamList, User } from "../navigation/navigation";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { User } from "../navigation/navigation";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import API from "../services/api";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAppTheme } from "../theme/ThemeContext";
+import { toAbsoluteImageUrl } from "../utils/image";
 
-type HomeScreenNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
-  "Home"
->;
 type Props = {
-    navigation: HomeScreenNavigationProp;
+    navigation: any;
   };
 
 type ChatListUser = User & {
@@ -28,6 +24,7 @@ const HomeScreen = ({ navigation } : Props) => {
     const { colors } = useAppTheme();
     const [users, setUsers] = useState<ChatListUser[]>([]);
     const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+    const [failedImageUserIds, setFailedImageUserIds] = useState<number[]>([]);
     useEffect(() => {
         fetchUsers();
     }, []);
@@ -40,15 +37,10 @@ const HomeScreen = ({ navigation } : Props) => {
 
     useLayoutEffect(() => {
         navigation.setOptions({
-            title: "AIChatApp",
-            headerRight: () => (
-                <TouchableOpacity
-                    onPress={() => navigation.navigate("Settings")}
-                    style={styles.settingsButton}
-                    activeOpacity={0.7}
-                >
-                    <Text style={[styles.settingsIcon, { color: colors.text }]}>⚙</Text>
-                </TouchableOpacity>
+            headerTitle: () => (
+                <Text style={[styles.logoText, { color: colors.text }]}>
+                  Chattr
+                </Text>
             )
         });
     }, [navigation, colors.text]);
@@ -78,6 +70,14 @@ const HomeScreen = ({ navigation } : Props) => {
         });
     };
 
+    const getMessageTimestamp = (rawTime?: string | number | null) => {
+        if (rawTime === null || rawTime === undefined) return 0;
+        const parsedDate = new Date(rawTime);
+        if (!Number.isNaN(parsedDate.getTime())) return parsedDate.getTime();
+        if (typeof rawTime === "number") return rawTime;
+        return 0;
+    };
+
     const fetchUsers = async () => {
         try {
             const storedUserId = await AsyncStorage.getItem("userId");
@@ -103,10 +103,12 @@ const HomeScreen = ({ navigation } : Props) => {
                         return {
                             ...user,
                             profileImage:
-                                (user as any).profileImage ??
-                                (user as any).avatar ??
-                                (user as any).profile_pic ??
-                                "",
+                                toAbsoluteImageUrl(
+                                    (user as any).profileImage ??
+                                    (user as any).avatar ??
+                                    (user as any).profile_pic ??
+                                    ""
+                                ),
                             about:
                                 (user as any).about ??
                                 (user as any).bio ??
@@ -122,10 +124,12 @@ const HomeScreen = ({ navigation } : Props) => {
                         return {
                             ...user,
                             profileImage:
-                                (user as any).profileImage ??
-                                (user as any).avatar ??
-                                (user as any).profile_pic ??
-                                "",
+                                toAbsoluteImageUrl(
+                                    (user as any).profileImage ??
+                                    (user as any).avatar ??
+                                    (user as any).profile_pic ??
+                                    ""
+                                ),
                             about:
                                 (user as any).about ??
                                 (user as any).bio ??
@@ -135,7 +139,12 @@ const HomeScreen = ({ navigation } : Props) => {
                 })
             );
 
-            setUsers(usersWithLastMessage as ChatListUser[]);
+            const sortedUsers = [...(usersWithLastMessage as ChatListUser[])].sort(
+                (a, b) => getMessageTimestamp(b.lastMessageAt) - getMessageTimestamp(a.lastMessageAt)
+            );
+
+            setUsers(sortedUsers);
+            setFailedImageUserIds([]);
         } catch (error) {
             console.log("Fetch users error:", error);
 
@@ -163,10 +172,15 @@ const HomeScreen = ({ navigation } : Props) => {
                                 })
                             }
                         >
-                            {item.profileImage ? (
+                            {item.profileImage && !failedImageUserIds.includes(item.id) ? (
                                 <Image
                                     source={{ uri: item.profileImage }}
                                     style={styles.avatarImage}
+                                    onError={() =>
+                                        setFailedImageUserIds((prev) =>
+                                            prev.includes(item.id) ? prev : [...prev, item.id]
+                                        )
+                                    }
                                 />
                             ) : (
                                 <View style={[styles.avatarFallback, { backgroundColor: colors.chipBackground }]}>
@@ -183,7 +197,8 @@ const HomeScreen = ({ navigation } : Props) => {
                             onPress={() =>
                                 navigation.navigate("Chat", {
                                     receiverId: item.id,
-                                    receiverName: item.name
+                                    receiverName: item.name,
+                                    receiverProfileImage: item.profileImage
                                 })
                             }
                         >
@@ -267,12 +282,9 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: "#4b5563"
     },
-    settingsButton: {
-        paddingHorizontal: 8,
-        paddingVertical: 2
-    },
-    settingsIcon: {
-        fontSize: 20,
-        color: "#111827"
+    logoText: {
+        fontSize: 30,
+        fontFamily: "AlfaSlabOne-Regular", // or your custom font
+        letterSpacing: 1,
     }
 });

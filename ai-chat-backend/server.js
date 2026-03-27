@@ -1,3 +1,4 @@
+require("dotenv").config();
 const fastify = require("fastify")({ logger: true });
 const { Server } = require("socket.io");
 const fs = require("fs");
