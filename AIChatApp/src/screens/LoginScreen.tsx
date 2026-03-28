@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, TextInput, Button, StyleSheet, Text } from "react-native";
+import { View, TextInput, TouchableOpacity, StyleSheet, Text, Image } from "react-native";
 import API from "../services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RootStackParamList } from "../navigation/navigation";
@@ -65,6 +65,10 @@ const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <View style={styles.brandWrap}>
+                <Image source={require("../assests/images/chattr_ai_logo.png")} style={styles.brandIcon} />
+                <Text style={[styles.brandText, { color: colors.text }]}>Chattr</Text>
+            </View>
 
             <TextInput
                 placeholder="Email"
@@ -83,14 +87,23 @@ const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
                 placeholderTextColor={colors.secondaryText}
             />
 
-            <Button title="Login" onPress={handleLogin} />
+            <TouchableOpacity
+                style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                onPress={handleLogin}
+                activeOpacity={0.9}
+            >
+                <Text style={styles.primaryButtonText}>Login</Text>
+            </TouchableOpacity>
 
             {message ? <Text style={[styles.message, { color: colors.primary }]}>{message}</Text> : null}
 
-            <Button
-                title="Go to Register"
+            <TouchableOpacity
+                style={[styles.secondaryButton, { borderColor: colors.border, backgroundColor: colors.inputBackground }]}
                 onPress={() => navigation.navigate("Register")}
-            />
+                activeOpacity={0.9}
+            >
+                <Text style={[styles.secondaryButtonText, { color: colors.text }]}>Go to Register</Text>
+            </TouchableOpacity>
         </View>
     );
 };
@@ -103,6 +116,21 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         padding: 20
     },
+    brandWrap: {
+        alignItems: "center",
+        marginBottom: 24
+    },
+    brandIcon: {
+        width: 74,
+        height: 74,
+        borderRadius: 37,
+        marginBottom: 10
+    },
+    brandText: {
+        fontSize: 32,
+        fontFamily: "AlfaSlabOne-Regular",
+        letterSpacing: 0.8
+    },
     input: {
         borderWidth: 1,
         marginBottom: 10,
@@ -112,5 +140,29 @@ const styles = StyleSheet.create({
         marginTop: 20,
         textAlign: "center",
         color: "green"
+    },
+    primaryButton: {
+        height: 46,
+        borderRadius: 12,
+        alignItems: "center",
+        justifyContent: "center",
+        marginTop: 4
+    },
+    primaryButtonText: {
+        color: "#ffffff",
+        fontSize: 15,
+        fontWeight: "700"
+    },
+    secondaryButton: {
+        height: 46,
+        borderRadius: 12,
+        borderWidth: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        marginTop: 12
+    },
+    secondaryButtonText: {
+        fontSize: 14,
+        fontWeight: "600"
     }
 });

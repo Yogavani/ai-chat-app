@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "#dbeafe",
+    backgroundColor: "#ede9fe",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 12
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
   avatarInitial: {
     fontSize: 44,
     fontWeight: "700",
-    color: "#1d4ed8"
+    color: "#7423d7"
   },
   userName: {
     fontSize: 22,

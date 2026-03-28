@@ -11,6 +11,11 @@
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		BFA3B1777E4D4ACFBF1C2FCE /* AlfaSlabOne-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CA9F8C044B5A4557922904AF /* AlfaSlabOne-Regular.ttf */; };
+		24B74F33C0E9488C8FB5FDFF /* DancingScript-VariableFont_wght.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7CDB451C503A4BE4A565EC0A /* DancingScript-VariableFont_wght.ttf */; };
+		6F226DD3372E4305A7178F60 /* wallpaper_dark.jpeg in Resources */ = {isa = PBXBuildFile; fileRef = 043EFCABEFE04481AF1FBE2C /* wallpaper_dark.jpeg */; };
+		C9DA93C65C6C4AEB985DFEED /* wall_paper_dark2.jpeg in Resources */ = {isa = PBXBuildFile; fileRef = 08A8AF5FE312478D9812DAC7 /* wall_paper_dark2.jpeg */; };
+		67B125A5C245446895DEE5CB /* chattr_ai_logo.png in Resources */ = {isa = PBXBuildFile; fileRef = 04CEFD2932964299B918C582 /* chattr_ai_logo.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +29,11 @@
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = AIChatApp/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = AIChatApp/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		CA9F8C044B5A4557922904AF /* AlfaSlabOne-Regular.ttf */ = {isa = PBXFileReference; name = "AlfaSlabOne-Regular.ttf"; path = "../src/assests/fonts/AlfaSlabOne-Regular.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
+		7CDB451C503A4BE4A565EC0A /* DancingScript-VariableFont_wght.ttf */ = {isa = PBXFileReference; name = "DancingScript-VariableFont_wght.ttf"; path = "../src/assests/fonts/DancingScript-VariableFont_wght.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
+		043EFCABEFE04481AF1FBE2C /* wallpaper_dark.jpeg */ = {isa = PBXFileReference; name = "wallpaper_dark.jpeg"; path = "../src/assests/images/wallpaper_dark.jpeg"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
+		08A8AF5FE312478D9812DAC7 /* wall_paper_dark2.jpeg */ = {isa = PBXFileReference; name = "wall_paper_dark2.jpeg"; path = "../src/assests/images/wall_paper_dark2.jpeg"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
+		04CEFD2932964299B918C582 /* chattr_ai_logo.png */ = {isa = PBXFileReference; name = "chattr_ai_logo.png"; path = "../src/assests/images/chattr_ai_logo.png"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -74,6 +84,7 @@
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
+				F22FF06FF6364EBA9314B011 /* Resources */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -96,6 +107,19 @@
 			);
 			path = Pods;
 			sourceTree = "<group>";
+		};
+		F22FF06FF6364EBA9314B011 /* Resources */ = {
+			isa = "PBXGroup";
+			children = (
+				CA9F8C044B5A4557922904AF /* AlfaSlabOne-Regular.ttf */,
+				7CDB451C503A4BE4A565EC0A /* DancingScript-VariableFont_wght.ttf */,
+				043EFCABEFE04481AF1FBE2C /* wallpaper_dark.jpeg */,
+				08A8AF5FE312478D9812DAC7 /* wall_paper_dark2.jpeg */,
+				04CEFD2932964299B918C582 /* chattr_ai_logo.png */,
+			);
+			name = Resources;
+			sourceTree = "<group>";
+			path = "";
 		};
 /* End PBXGroup section */
 
@@ -159,6 +183,11 @@
 			files = (
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+				BFA3B1777E4D4ACFBF1C2FCE /* AlfaSlabOne-Regular.ttf in Resources */,
+				24B74F33C0E9488C8FB5FDFF /* DancingScript-VariableFont_wght.ttf in Resources */,
+				6F226DD3372E4305A7178F60 /* wallpaper_dark.jpeg in Resources */,
+				C9DA93C65C6C4AEB985DFEED /* wall_paper_dark2.jpeg in Resources */,
+				67B125A5C245446895DEE5CB /* chattr_ai_logo.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

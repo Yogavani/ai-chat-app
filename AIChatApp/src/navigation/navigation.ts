@@ -7,7 +7,7 @@ export interface User {
 export type MainTabParamList = {
     Home: undefined;
     AIChat: undefined;
-    Explore: undefined;
+    Status: undefined;
     Settings: undefined;
 };
 
@@ -19,6 +19,19 @@ export type RootStackParamList = {
         receiverId: number;
         receiverName: string;
         receiverProfileImage?: string;
+        aiHubAction?:
+          | "ask"
+          | "generateImage"
+          | "textToSpeech"
+          | "speechToText"
+          | "voiceAgent"
+          | "documentAnalyzer"
+          | "imageUnderstanding"
+          | "rewrite"
+          | "generateReplies"
+          | "summarizeChat"
+          | "modes";
+        aiHubMode?: string;
      };
     Profile: {
         userId: number;
@@ -27,6 +40,7 @@ export type RootStackParamList = {
         profileImage?: string;
         about?: string;
     };
+    Premium: undefined;
     ChatScreen: {
         receiverId: number;
         receiverName: string;

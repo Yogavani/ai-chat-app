@@ -13,6 +13,7 @@ import {
   View
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Plus } from "lucide-react-native";
 import { getUsers } from "../services/userService";
 import API from "../services/api";
 import { launchImageLibrary } from "react-native-image-picker";
@@ -375,7 +376,7 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
             style={styles.plusButton}
             onPress={pickProfileImage}
           >
-            <Text style={styles.plusButtonText}>+</Text>
+            <Plus size={18} color="#ffffff" strokeWidth={2.4} />
           </TouchableOpacity>
         </View>
 
@@ -555,14 +556,14 @@ const styles = StyleSheet.create({
     width: 110,
     height: 110,
     borderRadius: 55,
-    backgroundColor: "#dbeafe",
+    backgroundColor: "#ede9fe",
     alignItems: "center",
     justifyContent: "center"
   },
   avatarInitial: {
     fontSize: 42,
     fontWeight: "700",
-    color: "#1d4ed8"
+    color: "#7423d7"
   },
   plusButton: {
     position: "absolute",
@@ -571,7 +572,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: "#2563eb",
+    backgroundColor: "#7423d7",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
@@ -689,8 +690,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8
   },
   chipActive: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb"
+    backgroundColor: "#7423d7",
+    borderColor: "#7423d7"
   },
   chipText: {
     color: "#374151",

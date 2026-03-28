@@ -14,7 +14,7 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export const AppThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  const [themePreference, setThemePreferenceState] = useState<ThemePreference>("light");
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference>("dark");
 
   useEffect(() => {
     const loadTheme = async () => {

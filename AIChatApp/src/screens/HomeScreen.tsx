@@ -16,6 +16,7 @@ type ChatListUser = User & {
     lastMessage?: string;
     lastMessageAt?: string | number | null;
     lastMessageSenderId?: number | null;
+    hasConversation?: boolean;
     profileImage?: string;
     about?: string;
 };
@@ -118,7 +119,8 @@ const HomeScreen = ({ navigation } : Props) => {
                                 lastMessage?.created_at ??
                                 lastMessage?.updated_at ??
                                 null,
-                            lastMessageSenderId: lastMessage?.sender_id ?? null
+                            lastMessageSenderId: lastMessage?.sender_id ?? null,
+                            hasConversation: conversation.length > 0
                         };
                     } catch (error) {
                         return {
@@ -133,13 +135,18 @@ const HomeScreen = ({ navigation } : Props) => {
                             about:
                                 (user as any).about ??
                                 (user as any).bio ??
-                                "Hey there! I am using AIChatApp."
+                                "Hey there! I am using AIChatApp.",
+                            hasConversation: false
                         };
                     }
                 })
             );
 
-            const sortedUsers = [...(usersWithLastMessage as ChatListUser[])].sort(
+            const usersWithConversationOnly = (usersWithLastMessage as ChatListUser[]).filter(
+                (item) => Boolean(item.hasConversation)
+            );
+
+            const sortedUsers = [...usersWithConversationOnly].sort(
                 (a, b) => getMessageTimestamp(b.lastMessageAt) - getMessageTimestamp(a.lastMessageAt)
             );
 
@@ -172,7 +179,13 @@ const HomeScreen = ({ navigation } : Props) => {
                                 })
                             }
                         >
-                            {item.profileImage && !failedImageUserIds.includes(item.id) ? (
+                            {item.id === 9999 ||
+                            item.name?.trim().toLowerCase() === "chattr ai" ? (
+                                <Image
+                                    source={require("../assests/images/chattr_ai_logo.png")}
+                                    style={styles.avatarImage}
+                                />
+                            ) : item.profileImage && !failedImageUserIds.includes(item.id) ? (
                                 <Image
                                     source={{ uri: item.profileImage }}
                                     style={styles.avatarImage}
@@ -251,14 +264,14 @@ const styles = StyleSheet.create({
         height: 46,
         borderRadius: 23,
         marginRight: 12,
-        backgroundColor: "#dbeafe",
+        backgroundColor: "#ede9fe",
         alignItems: "center",
         justifyContent: "center"
     },
     avatarInitial: {
         fontSize: 18,
         fontWeight: "700",
-        color: "#1d4ed8"
+        color: "#7423d7"
     },
     textContent: {
         flex: 1

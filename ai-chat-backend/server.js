@@ -1,13 +1,25 @@
 require("dotenv").config();
-const fastify = require("fastify")({ logger: true });
+const fastify = require("fastify")({ logger: true, ignoreTrailingSlash: true });
 const { Server } = require("socket.io");
 const fs = require("fs");
 const path = require("path");
+const fastifyStatic = require("@fastify/static");
+const fastifyMultipart = require("@fastify/multipart");
 
 const userRoutes = require("./routes/userRoutes");
 
 // Must be decorated before server starts.
 fastify.decorate("io", null);
+
+fastify.register(fastifyMultipart, {
+  limits: {
+    fileSize: 200 * 1024 * 1024
+  }
+});
+fastify.register(fastifyStatic, {
+  root: path.join(process.cwd(), "uploads"),
+  prefix: "/uploads/"
+});
 
 fastify.register(userRoutes);
 

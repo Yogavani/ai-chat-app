@@ -1,13 +1,23 @@
 const userService = require("../services/userService");
 const fs = require("fs");
 const path = require("path");
+const ffmpeg = require("fluent-ffmpeg");
+const ffmpegPath = require("ffmpeg-static");
+
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 exports.getUsers = async (request, reply) => {
   try {
     const users = await userService.getUsers();
     return users;
   } catch (error) {
-    reply.code(500).send(error);
+    const statusCode =
+      Number(error?.statusCode) >= 400 && Number(error?.statusCode) < 600
+        ? Number(error.statusCode)
+        : 500;
+    reply.code(statusCode).send({
+      message: error?.message || "Document analysis failed"
+    });
   }
 };
 
@@ -169,9 +179,40 @@ exports.deleteAccount = async (request, reply) => {
   }
 };
 
+exports.createPayment = async (request, reply) => {
+  try {
+    const result = await userService.createPayment(request.body || {});
+    return result;
+  } catch (error) {
+    const statusCode =
+      Number(error?.statusCode) >= 400 && Number(error?.statusCode) < 600
+        ? Number(error.statusCode)
+        : 500;
+    reply.code(statusCode).send({
+      message: error?.message || "Unable to create payment"
+    });
+  }
+};
+
+exports.getPremiumStatus = async (request, reply) => {
+  try {
+    const { userId } = request.params || {};
+    const result = await userService.getPremiumStatus(userId);
+    return result;
+  } catch (error) {
+    const statusCode =
+      Number(error?.statusCode) >= 400 && Number(error?.statusCode) < 600
+        ? Number(error.statusCode)
+        : 500;
+    reply.code(statusCode).send({
+      message: error?.message || "Unable to fetch premium status"
+    });
+  }
+};
+
 exports.rewriteMessage = async (request, reply) => {
   try {
-    const { message } = request.body || {};
+    const { message, mode } = request.body || {};
 
     if (typeof message !== "string" || !message.trim()) {
       return reply.code(400).send({
@@ -179,26 +220,412 @@ exports.rewriteMessage = async (request, reply) => {
       });
     }
 
-    const result = await userService.rewriteMessage(message.trim());
+    const result = await userService.rewriteMessage(message.trim(), mode);
+    return result;
+  } catch (error) {
+    const statusCode =
+      Number(error?.statusCode) >= 400 && Number(error?.statusCode) < 600
+        ? Number(error.statusCode)
+        : 500;
+    reply.code(statusCode).send({
+      message: error?.message || "Document analysis failed"
+    });
+  }
+};
+
+exports.suggestReplies = async (request, reply) => {
+  try {
+    const { message, mode } = request.body || {};
+
+    if (typeof message !== "string" || !message.trim()) {
+      return reply.code(400).send({
+        message: "message is required and must be a non-empty string"
+      });
+    }
+
+    const result = await userService.suggestReplies(message.trim(), mode);
+    return result;
+  } catch (error) {
+    const statusCode =
+      Number(error?.statusCode) >= 400 && Number(error?.statusCode) < 600
+        ? Number(error.statusCode)
+        : 500;
+    reply.code(statusCode).send({
+      message: error?.message || "Document analysis failed"
+    });
+  }
+};
+
+exports.aiRewrite = async (request, reply) => {
+  try {
+    const { message, mode } = request.body || {};
+    if (typeof message !== "string" || !message.trim()) {
+      return reply.code(400).send({ message: "message is required and must be a non-empty string" });
+    }
+
+    const result = await userService.rewriteMessage(message.trim(), mode);
     return result;
   } catch (error) {
     reply.code(500).send(error);
   }
 };
 
-exports.suggestReplies = async (request, reply) => {
+exports.aiGenerateReplies = async (request, reply) => {
   try {
-    const { message } = request.body || {};
-
+    const { message, mode } = request.body || {};
     if (typeof message !== "string" || !message.trim()) {
-      return reply.code(400).send({
-        message: "message is required and must be a non-empty string"
-      });
+      return reply.code(400).send({ message: "message is required and must be a non-empty string" });
     }
 
-    const result = await userService.suggestReplies(message.trim());
+    const result = await userService.suggestReplies(message.trim(), mode);
     return result;
   } catch (error) {
     reply.code(500).send(error);
+  }
+};
+
+exports.aiSummarizeChat = async (request, reply) => {
+  try {
+    const { chatText, messages, mode } = request.body || {};
+
+    let normalizedText = "";
+    if (typeof chatText === "string" && chatText.trim()) {
+      normalizedText = chatText.trim();
+    } else if (Array.isArray(messages) && messages.length) {
+      normalizedText = messages
+        .map((m) => {
+          const sender = m?.sender || m?.role || "User";
+          const content = m?.message || m?.content || "";
+          return `${sender}: ${content}`;
+        })
+        .join("\n");
+    }
+
+    if (!normalizedText) {
+      return reply.code(400).send({
+        message: "chatText or messages[] is required for summarization"
+      });
+    }
+
+    const result = await userService.summarizeChat(normalizedText, mode);
+    return result;
+  } catch (error) {
+    reply.code(500).send(error);
+  }
+};
+
+exports.aiAsk = async (request, reply) => {
+  try {
+    const { prompt, mode } = request.body || {};
+    if (typeof prompt !== "string" || !prompt.trim()) {
+      return reply.code(400).send({ message: "prompt is required and must be a non-empty string" });
+    }
+
+    const result = await userService.askAI(prompt.trim(), mode);
+    return result;
+  } catch (error) {
+    reply.code(500).send(error);
+  }
+};
+
+exports.aiGenerateImage = async (request, reply) => {
+  try {
+    const { prompt, negative_prompt, width, height, steps } = request.body || {};
+
+    if (typeof prompt !== "string" || !prompt.trim()) {
+      return reply.code(400).send({ message: "prompt is required and must be a non-empty string" });
+    }
+
+    const result = await userService.generateImage(prompt.trim(), {
+      negative_prompt,
+      width,
+      height,
+      steps
+    });
+
+    return result;
+  } catch (error) {
+    reply.code(500).send(error);
+  }
+};
+
+exports.aiTextToSpeech = async (request, reply) => {
+  try {
+    const { text, voice, model } = request.body || {};
+
+    if (typeof text !== "string" || !text.trim()) {
+      return reply.code(400).send({ message: "text is required and must be a non-empty string" });
+    }
+
+    const result = await userService.textToSpeech(text.trim(), { voice, model });
+    return result;
+  } catch (error) {
+    reply.code(500).send(error);
+  }
+};
+
+exports.aiSpeechToText = async (request, reply) => {
+  try {
+    const part = await request.file();
+    if (!part) {
+      return reply.code(400).send({ message: "audio file is required" });
+    }
+
+    const mime = (part.mimetype || "").toLowerCase();
+    if (!mime.startsWith("audio/") && mime !== "application/octet-stream") {
+      return reply.code(400).send({ message: "Only audio file is allowed" });
+    }
+
+    const audioBuffer = await part.toBuffer();
+    if (!audioBuffer || !audioBuffer.length) {
+      return reply.code(400).send({ message: "Audio file is empty" });
+    }
+
+    const { model } = request.query || {};
+    const result = await userService.speechToText(audioBuffer, mime, { model });
+    return result;
+  } catch (error) {
+    reply.code(500).send(error);
+  }
+};
+
+exports.aiVoiceAgent = async (request, reply) => {
+  try {
+    const part = await request.file();
+    if (!part) {
+      return reply.code(400).send({ message: "audio file is required" });
+    }
+
+    const mime = (part.mimetype || "").toLowerCase();
+    if (!mime.startsWith("audio/") && mime !== "application/octet-stream") {
+      return reply.code(400).send({ message: "Only audio file is allowed" });
+    }
+
+    const audioBuffer = await part.toBuffer();
+    if (!audioBuffer || !audioBuffer.length) {
+      return reply.code(400).send({ message: "Audio file is empty" });
+    }
+
+    const { stt_model, tts_model, mode } = request.query || {};
+    const result = await userService.voiceAgent(audioBuffer, mime, {
+      stt_model,
+      tts_model,
+      mode
+    });
+    return result;
+  } catch (error) {
+    reply.code(500).send(error);
+  }
+};
+
+exports.aiDocumentAnalyzer = async (request, reply) => {
+  try {
+    const part = await request.file();
+    if (!part) {
+      return reply.code(400).send({ message: "document file is required" });
+    }
+
+    const mime = (part.mimetype || "").toLowerCase();
+    const normalizedMime =
+      mime === "text/comma-separated-values" ||
+      mime === "application/csv" ||
+      mime === "application/x-csv" ||
+      mime === "application/vnd.ms-excel"
+        ? "text/csv"
+        : mime;
+    const allowedDocMimes = [
+      "application/pdf",
+      "text/plain",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/csv",
+      "text/comma-separated-values",
+      "application/csv",
+      "application/x-csv",
+      "application/vnd.ms-excel"
+    ];
+
+    if (!allowedDocMimes.includes(normalizedMime)) {
+      return reply.code(400).send({ message: `Unsupported document type: ${mime}` });
+    }
+
+    const fileBuffer = await part.toBuffer();
+    const prompt =
+      part.fields?.prompt?.value ||
+      part.fields?.question?.value ||
+      "Analyze this document and provide key points clearly.";
+
+    const result = await userService.documentAnalyzer(fileBuffer, normalizedMime, prompt);
+    return result;
+  } catch (error) {
+    const statusCode =
+      Number(error?.statusCode) >= 400 && Number(error?.statusCode) < 600
+        ? Number(error.statusCode)
+        : 500;
+    reply.code(statusCode).send({
+      message: error?.message || "Document analysis failed"
+    });
+  }
+};
+
+exports.aiImageUnderstanding = async (request, reply) => {
+  try {
+    const part = await request.file();
+    if (!part) {
+      return reply.code(400).send({ message: "image file is required" });
+    }
+
+    const mime = (part.mimetype || "").toLowerCase();
+    if (!mime.startsWith("image/")) {
+      return reply.code(400).send({ message: "Only image file is allowed" });
+    }
+
+    const fileBuffer = await part.toBuffer();
+    const prompt =
+      part.fields?.prompt?.value ||
+      part.fields?.question?.value ||
+      "Understand this image and explain what it contains.";
+
+    const result = await userService.imageUnderstanding(fileBuffer, mime, prompt);
+    return result;
+  } catch (error) {
+    reply.code(500).send(error);
+  }
+};
+
+exports.createStatus = async (request, reply) => {
+  try {
+    const result = await userService.createStatus(request.body || {});
+    return result;
+  } catch (error) {
+    if (error && error.code === "ER_NO_REFERENCED_ROW_2") {
+      return reply.code(400).send({ message: "Invalid user_id. User does not exist." });
+    }
+    if (error && error.code === "ER_TRUNCATED_WRONG_VALUE") {
+      return reply.code(400).send({ message: "Invalid expires_at format." });
+    }
+
+    const statusCode = error && error.statusCode ? error.statusCode : 500;
+    reply.code(statusCode).send({
+      message: error && error.message ? error.message : "Failed to create status"
+    });
+  }
+};
+
+exports.getStatusPosts = async (request, reply) => {
+  try {
+    const { user_id } = request.query || {};
+    const result = await userService.getStatusPosts(user_id);
+    return result;
+  } catch (error) {
+    const statusCode = error && error.statusCode ? error.statusCode : 500;
+    reply.code(statusCode).send(error);
+  }
+};
+
+exports.getStatusViews = async (request, reply) => {
+  try {
+    const { statusId } = request.params || {};
+    const result = await userService.getStatusViews(statusId);
+    return result;
+  } catch (error) {
+    const statusCode = error && error.statusCode ? error.statusCode : 500;
+    reply.code(statusCode).send(error);
+  }
+};
+
+exports.markStatusView = async (request, reply) => {
+  try {
+    const result = await userService.markStatusView(request.body || {});
+    return result;
+  } catch (error) {
+    const statusCode = error && error.statusCode ? error.statusCode : 500;
+    reply.code(statusCode).send(error);
+  }
+};
+
+exports.deleteStatus = async (request, reply) => {
+  try {
+    const result = await userService.deleteStatus(request.body || {});
+    return result;
+  } catch (error) {
+    const statusCode = error && error.statusCode ? error.statusCode : 500;
+    reply.code(statusCode).send(error);
+  }
+};
+
+exports.uploadStatusMedia = async (request, reply) => {
+  try {
+    const part = await request.file();
+    if (!part) {
+      return reply.code(400).send({ message: "file is required" });
+    }
+
+    const mime = part.mimetype || "";
+    if (!mime.startsWith("image/") && !mime.startsWith("video/")) {
+      return reply.code(400).send({ message: "Only image or video files are allowed" });
+    }
+
+    const uploadsDir = path.join(process.cwd(), "uploads", "status-media");
+    fs.mkdirSync(uploadsDir, { recursive: true });
+
+    const ext = path.extname(part.filename || "").toLowerCase();
+    const isVideo = mime.startsWith("video/");
+    const baseName = `status-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const tempExt = ext || (isVideo ? ".mov" : ".jpg");
+    const tempInput = path.join(uploadsDir, `${baseName}-raw${tempExt}`);
+
+    await new Promise((resolve, reject) => {
+      const ws = fs.createWriteStream(tempInput);
+      part.file.pipe(ws);
+      ws.on("finish", resolve);
+      ws.on("error", reject);
+      part.file.on("error", reject);
+    });
+
+    let finalFilePath = tempInput;
+
+    if (isVideo) {
+      let transcoded = path.join(uploadsDir, `${baseName}.mp4`);
+      if (path.resolve(transcoded) === path.resolve(tempInput)) {
+        transcoded = path.join(uploadsDir, `${baseName}-out.mp4`);
+      }
+
+      await new Promise((resolve, reject) => {
+        ffmpeg(tempInput)
+          .outputOptions([
+            "-c:v libx264",
+            "-preset veryfast",
+            "-crf 23",
+            "-pix_fmt yuv420p",
+            "-movflags +faststart",
+            "-c:a aac",
+            "-b:a 128k",
+            "-ar 44100",
+            "-ac 2"
+          ])
+          .format("mp4")
+          .on("end", resolve)
+          .on("error", reject)
+          .save(transcoded);
+      });
+
+      if (fs.existsSync(tempInput)) {
+        fs.unlinkSync(tempInput);
+      }
+      finalFilePath = transcoded;
+    }
+
+    const fileName = path.basename(finalFilePath);
+    const host = request.headers.host;
+    const mediaUrl = `http://${host}/uploads/status-media/${fileName}`;
+
+    return reply.send({
+      message: "Upload successful",
+      mediaUrl
+    });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ message: "Upload failed" });
   }
 };

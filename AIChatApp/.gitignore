@@ -34,7 +34,8 @@ local.properties
 *.keystore
 !debug.keystore
 .kotlin/
-
+uploads/
+*.mp4
 # node.js
 #
 node_modules/

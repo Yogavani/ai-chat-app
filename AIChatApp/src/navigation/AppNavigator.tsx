@@ -4,7 +4,8 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
-import { StatusBar, Text } from "react-native";
+import { StatusBar } from "react-native";
+import { Bot, Compass, House, Settings as SettingsIcon } from "lucide-react-native";
 
 
 import LoginScreen from "../screens/LoginScreen";
@@ -15,6 +16,7 @@ import ProfileScreen from "../screens/ProfileScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import AIChatScreen from "../screens/AIChatScreen";
 import ExploreScreen from "../screens/ExploreScreen";
+import PremiumScreen from "../screens/PremiumScreen";
 import { MainTabParamList, RootStackParamList } from "./navigation";
 import { useAppTheme } from "../theme/ThemeContext";
 
@@ -37,39 +39,31 @@ const MainTabs = ({ onLogoutSuccess }: { onLogoutSuccess: () => void }) => {
                 tabBarActiveTintColor: colors.primary,
                 tabBarInactiveTintColor: colors.secondaryText,
                 tabBarIcon: ({ color, size }) => {
-                    const iconMap: Record<string, string> = {
-                        Home: "🏠",
-                        AIChat: "🤖",
-                        Explore: "🧭",
-                        Settings: "⚙"
-                    };
-                    return (
-                        <StatusBarIcon label={iconMap[route.name] || "•"} color={color} size={size} />
-                    );
+                    const strokeWidth = 2.1;
+                    switch (route.name) {
+                        case "Home":
+                            return <House color={color} size={size} strokeWidth={strokeWidth} />;
+                        case "AIChat":
+                            return <Bot color={color} size={size} strokeWidth={strokeWidth} />;
+                        case "Status":
+                            return <Compass color={color} size={size} strokeWidth={strokeWidth} />;
+                        case "Settings":
+                            return <SettingsIcon color={color} size={size} strokeWidth={strokeWidth} />;
+                        default:
+                            return <House color={color} size={size} strokeWidth={strokeWidth} />;
+                    }
                 }
             })}
         >
             <Tab.Screen name="Home" component={HomeScreen} />
-            <Tab.Screen name="AIChat" component={AIChatScreen} options={{ title: "AI Chat" }} />
-            <Tab.Screen name="Explore" component={ExploreScreen} />
+            <Tab.Screen name="AIChat" component={AIChatScreen} options={{ title: "AI Toolkit" }} />
+            <Tab.Screen name="Status" component={ExploreScreen} />
             <Tab.Screen name="Settings">
                 {(props) => <SettingsScreen {...props} onLogoutSuccess={onLogoutSuccess} />}
             </Tab.Screen>
         </Tab.Navigator>
     );
 };
-
-const StatusBarIcon = ({
-    label,
-    color,
-    size
-}: {
-    label: string;
-    color: string;
-    size: number;
-}) => (
-    <Text style={{ color, fontSize: size }}>{label}</Text>
-);
 
 const AppNavigator = () => {
     const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
@@ -133,10 +127,11 @@ const AppNavigator = () => {
                         </Stack.Screen>
                         <Stack.Screen name="Chat" component={ChatScreen} />
                         <Stack.Screen name="Profile" component={ProfileScreen} />
+                        <Stack.Screen name="Premium" component={PremiumScreen} options={{ title: "Premium" }} />
                     </>
                 ) : (
                     <>
-                        <Stack.Screen name="Login">
+                        <Stack.Screen name="Login" options={{ headerShown: false }}>
                             {(props) => (
                                 <LoginScreen
                                     {...props}
@@ -144,7 +139,7 @@ const AppNavigator = () => {
                                 />
                             )}
                         </Stack.Screen>
-                        <Stack.Screen name="Register" component={RegisterScreen} />
+                        <Stack.Screen name="Register" component={RegisterScreen} options={{ headerShown: false }} />
                     </>
                 )}
             </Stack.Navigator>

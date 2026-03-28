@@ -19,22 +19,22 @@ export const lightColors: AppColors = {
   text: "#111827",
   secondaryText: "#6b7280",
   border: "#e5e7eb",
-  primary: "#2563eb",
+  primary: "#7423d7",
   inputBackground: "#f9fafb",
-  chipBackground: "#e5e7eb",
-  chipText: "#374151",
+  chipBackground: "#ede9fe",
+  chipText: "#5b21b6",
   danger: "#dc2626"
 };
 
 export const darkColors: AppColors = {
-  background: "#111827",
-  card: "#1f2937",
+  background: "#1c1c1c",
+  card: "#252525",
   text: "#f9fafb",
   secondaryText: "#9ca3af",
-  border: "#374151",
-  primary: "#60a5fa",
-  inputBackground: "#111827",
-  chipBackground: "#374151",
+  border: "#3f3f46",
+  primary: "#7423d7",
+  inputBackground: "#2a2a2a",
+  chipBackground: "#4c1d95",
   chipText: "#e5e7eb",
   danger: "#f87171"
 };
