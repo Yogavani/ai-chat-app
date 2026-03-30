@@ -1,23 +1,4 @@
-# Node modules
 node_modules/
-
-# Environment variables
+uploads/
 .env
-
-# Logs
-npm-debug.log
-yarn-error.log
-
-# Mac files
-.DS_Store
-
-# React Native
-android/build
-ios/build
-
-# Backend generated uploads
-ai-chat-backend/uploads/
-
-# Firebase / GCP service account secrets
-ai-chat-backend/config/serviceAccountKey.json
-**/serviceAccountKey.json
+config/serviceAccountKey.json
