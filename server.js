@@ -56,8 +56,21 @@ const start = async () => {
     await fastify.ready();
     console.log(fastify.printRoutes());
 
-    await fastify.listen({ port: PORT, host: HOST });
-    console.log(`Server running on ${HOST}:${PORT}`);
+    let listeningHost = HOST;
+    try {
+      await fastify.listen({ port: PORT, host: listeningHost });
+    } catch (err) {
+      if (err?.code === "EADDRNOTAVAIL" && listeningHost !== "0.0.0.0") {
+        fastify.log.warn(
+          `Host ${listeningHost} not available, retrying on 0.0.0.0:${PORT}`
+        );
+        listeningHost = "0.0.0.0";
+        await fastify.listen({ port: PORT, host: listeningHost });
+      } else {
+        throw err;
+      }
+    }
+    console.log(`Server running on ${listeningHost}:${PORT}`);
 
     // Attach socket.io to Fastify's underlying Node server
     const io = new Server(fastify.server, {
