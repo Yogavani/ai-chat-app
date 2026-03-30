@@ -29,6 +29,7 @@ async function userRoutes(server, options) {
   server.post(USER.UPLOAD_PROFILE_IMAGE, userHandler.uploadProfileImage);
   server.post(USER.UPLOAD_STATUS_MEDIA, userHandler.uploadStatusMedia);
   server.post(USER.UPDATE_ABOUT, userHandler.updateAbout);
+  server.post(USER.UPDATE_FCM_TOKEN, userHandler.updateFcmToken);
   server.post(USER.CREATE_PAYMENT, userHandler.createPayment);
   server.get(USER.GET_PREMIUM_STATUS, userHandler.getPremiumStatus);
 }

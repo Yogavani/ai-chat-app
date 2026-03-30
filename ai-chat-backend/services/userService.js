@@ -16,6 +16,7 @@ const {
   documentAnalyzerWithGroq,
   imageUnderstandingWithGemini
 } = require("./aiService");
+const { sendNotification } = require("./firebaseService");
 const AI_BOT_USER_ID = 9999;
 const MAX_AI_CONTEXT_MESSAGES = 20;
 const AUTO_REPLY_DELAY_MS = Number(process.env.AUTO_REPLY_DELAY_MS || 10000);
@@ -50,6 +51,10 @@ function triggerAutoReply(senderId, receiverId, message) {
 
 exports.getUsers = async () => {
   return await userDao.getUsers();
+};
+
+exports.getUserById = async (userId) => {
+  return await userDao.getUserById(userId);
 };
 
 exports.registerUser = async (data) => {
@@ -151,6 +156,15 @@ exports.sendMessage = async (data) => {
 
     const result = await messageDao.sendMessage(data);
 
+    try {
+      const receiver = await userDao.getUserById(data.receiver_id);
+      if (receiver?.fcm_token) {
+        await sendNotification(receiver.fcm_token, data.message);
+      }
+    } catch (pushError) {
+      console.log("Push notification error:", pushError?.message || pushError);
+    }
+
     if (
       autoReplyEnabled === true &&
       Number(data.receiver_id) !== AI_BOT_USER_ID &&
@@ -200,6 +214,22 @@ exports.updateAbout = async (userId, about) => {
   return {
     message: "About updated successfully",
     about
+  };
+
+};
+
+exports.updateFcmToken = async (userId, fcmToken) => {
+
+  const result = await userDao.updateFcmToken(userId, fcmToken);
+
+  if (!result.affectedRows) {
+    throw { message: "User not found" };
+  }
+
+  return {
+    message: "FCM token updated successfully",
+    userId: Number(userId),
+    hasToken: Boolean(fcmToken)
   };
 
 };

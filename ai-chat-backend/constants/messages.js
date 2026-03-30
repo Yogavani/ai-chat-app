@@ -25,6 +25,7 @@ const USER = {
     UPLOAD_PROFILE_IMAGE: "/upload-profile-image/:userId",
     UPLOAD_STATUS_MEDIA: "/upload-status-media",
     UPDATE_ABOUT: "/update-about/:userId",
+    UPDATE_FCM_TOKEN: "/update-fcm-token/:userId",
     CREATE_PAYMENT: "/payments",
     GET_PREMIUM_STATUS: "/premium-status/:userId",
   };

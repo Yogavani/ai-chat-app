@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from "react";
-import { View, Text, FlatList, StyleSheet ,TouchableOpacity, Image } from "react-native";
+import { View, Text, FlatList, StyleSheet ,TouchableOpacity, Image, PermissionsAndroid, Platform } from "react-native";
 import { getUsers } from "../services/userService";
 import { User } from "../navigation/navigation";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -7,6 +7,7 @@ import API from "../services/api";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAppTheme } from "../theme/ThemeContext";
 import { toAbsoluteImageUrl } from "../utils/image";
+import messaging from '@react-native-firebase/messaging';
 
 type Props = {
     navigation: any;
@@ -35,7 +36,63 @@ const HomeScreen = ({ navigation } : Props) => {
             fetchUsers();
         }, [])
     );
+    
+    useEffect(() => {
+      const setupNotifications = async () => {
+        try {
+          if (Platform.OS === "android" && Platform.Version >= 33) {
+            const hasPermission = await PermissionsAndroid.check(
+              PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+            );
 
+            if (!hasPermission) {
+              const permissionResult = await PermissionsAndroid.request(
+                PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+              );
+              if (permissionResult !== PermissionsAndroid.RESULTS.GRANTED) {
+                console.log("POST_NOTIFICATIONS permission denied");
+                return;
+              }
+            }
+          }
+
+          // Request permission
+          await messaging().requestPermission();
+    
+          // Get token
+          const token = await messaging().getToken();
+          const userId = await AsyncStorage.getItem("userId");
+          if (token && userId) {
+            await API.post(`/update-fcm-token/${userId}`, {
+              fcm_token: token
+            });
+          }
+    
+          console.log("🔥 FCM Token:", token);
+        } catch (error) {
+          console.log("FCM error:", error);
+        }
+      };
+    
+      setupNotifications();
+
+      const unsubscribeTokenRefresh = messaging().onTokenRefresh(async (newToken) => {
+        try {
+          const userId = await AsyncStorage.getItem("userId");
+          if (!userId) return;
+
+          await API.post(`/update-fcm-token/${userId}`, {
+            fcm_token: newToken
+          });
+        } catch (error) {
+          console.log("FCM refresh save error:", error);
+        }
+      });
+
+      return () => {
+        unsubscribeTokenRefresh();
+      };
+    }, []);
     useLayoutEffect(() => {
         navigation.setOptions({
             headerTitle: () => (

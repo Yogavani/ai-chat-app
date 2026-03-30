@@ -47,6 +47,19 @@ exports.createUser = (user) => {
   
   };
 
+  exports.getUserById = (userId) => {
+
+    return new Promise((resolve, reject) => {
+      const query = "SELECT * FROM users WHERE id = ? LIMIT 1";
+
+      db.query(query, [userId], (err, result) => {
+        if (err) reject(err);
+        else resolve(result?.[0] || null);
+      });
+    });
+
+  };
+
   exports.sendMessage = (data) => {
 
     return new Promise((resolve, reject) => {
@@ -111,6 +124,19 @@ exports.createUser = (user) => {
       const query = "UPDATE users SET about = ? WHERE id = ?";
 
       db.query(query, [about, userId], (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
+    });
+
+  };
+
+  exports.updateFcmToken = (userId, fcmToken) => {
+
+    return new Promise((resolve, reject) => {
+      const query = "UPDATE users SET fcm_token = ? WHERE id = ?";
+
+      db.query(query, [fcmToken, userId], (err, result) => {
         if (err) reject(err);
         else resolve(result);
       });

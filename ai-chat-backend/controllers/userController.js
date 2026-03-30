@@ -166,6 +166,31 @@ exports.updateAbout = async (request, reply) => {
   }
 };
 
+exports.updateFcmToken = async (request, reply) => {
+  try {
+    const { userId } = request.params;
+    const { fcm_token } = request.body || {};
+
+    if (typeof fcm_token !== "string" && fcm_token !== null) {
+      return reply.code(400).send({
+        message: "fcm_token is required and must be a string or null"
+      });
+    }
+
+    const normalizedToken =
+      typeof fcm_token === "string" ? fcm_token.trim() : null;
+
+    const result = await userService.updateFcmToken(
+      userId,
+      normalizedToken || null
+    );
+    return result;
+  } catch (error) {
+    const statusCode = error && error.message === "User not found" ? 404 : 500;
+    reply.code(statusCode).send(error);
+  }
+};
+
 exports.deleteAccount = async (request, reply) => {
   try {
     const { userId } = request.params;

@@ -18,6 +18,7 @@ import { getUsers } from "../services/userService";
 import API from "../services/api";
 import { launchImageLibrary } from "react-native-image-picker";
 import { useAppTheme } from "../theme/ThemeContext";
+import messaging from "@react-native-firebase/messaging";
 
 type LanguageOption = "English" | "Hindi" | "Tamil";
 
@@ -294,6 +295,23 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
   };
 
   const handleLogout = async () => {
+    try {
+      const userId = currentUserId ?? Number(await AsyncStorage.getItem("userId"));
+      if (userId && !Number.isNaN(userId)) {
+        await API.post(`/update-fcm-token/${userId}`, {
+          fcm_token: null
+        });
+      }
+    } catch (error) {
+      console.log("FCM token clear API error:", error);
+    }
+
+    try {
+      await messaging().deleteToken();
+    } catch (error) {
+      console.log("Local FCM token delete error:", error);
+    }
+
     await AsyncStorage.multiRemove(["token", "userId"]);
     onLogoutSuccess();
   };
