@@ -1,10 +1,25 @@
-const fastify = require("fastify")({ logger: true });
+require("dotenv").config();
+const fastify = require("fastify")({ logger: true, ignoreTrailingSlash: true });
 const { Server } = require("socket.io");
+const fs = require("fs");
+const path = require("path");
+const fastifyStatic = require("@fastify/static");
+const fastifyMultipart = require("@fastify/multipart");
 
 const userRoutes = require("./routes/userRoutes");
 
 // Must be decorated before server starts.
 fastify.decorate("io", null);
+
+fastify.register(fastifyMultipart, {
+  limits: {
+    fileSize: 200 * 1024 * 1024
+  }
+});
+fastify.register(fastifyStatic, {
+  root: path.join(process.cwd(), "uploads"),
+  prefix: "/uploads/"
+});
 
 fastify.register(userRoutes);
 
@@ -12,13 +27,37 @@ fastify.get("/", async () => {
   return { message: "Chat API running" };
 });
 
+fastify.get("/uploads/profile-images/:fileName", async (request, reply) => {
+  const { fileName } = request.params;
+  const safeFileName = path.basename(fileName);
+  const filePath = path.join(process.cwd(), "uploads", "profile-images", safeFileName);
+
+  if (!fs.existsSync(filePath)) {
+    return reply.code(404).send({ message: "File not found" });
+  }
+
+  const extension = path.extname(safeFileName).toLowerCase();
+  const mimeMap = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp"
+  };
+  reply.type(mimeMap[extension] || "application/octet-stream");
+  return fs.createReadStream(filePath);
+});
+
+const PORT = Number(process.env.PORT) || 5000;
+const HOST = process.env.HOST || "0.0.0.0";
+
 const start = async () => {
   try {
-    await fastify.listen({
-      port: 5000,
-      host: "192.168.13.42"
-    });
-    console.log("Server running on port 5000");
+    await fastify.ready();
+    console.log(fastify.printRoutes());
+
+    await fastify.listen({ port: PORT, host: HOST });
+    console.log(`Server running on ${HOST}:${PORT}`);
 
     // Attach socket.io to Fastify's underlying Node server
     const io = new Server(fastify.server, {
@@ -47,6 +86,54 @@ const start = async () => {
     
       socket.on("disconnect", (reason) => {
         console.log("User disconnected:", socket.id, "reason:", reason);
+      });
+    });
+    io.on("connection", (socket) => {
+      socket.on("join", (userId) => {
+        socket.join(String(userId));
+        // optional: mark online + broadcast status
+        io.emit("user-status", { userId, online: true });
+      });
+    
+      socket.on("typing", ({ fromUserId, toUserId }) => {
+        // console.log("typing room members", toUserId, [...(io.sockets.adapter.rooms.get(String(toUserId)) || [])]);
+        io.to(String(toUserId)).emit("typing", { fromUserId, toUserId });
+      });
+      
+      socket.on("stop-typing", ({ fromUserId, toUserId }) => {
+        io.to(String(toUserId)).emit("stop-typing", { fromUserId, toUserId });
+      });
+      
+    
+      socket.on("get-user-status", ({ userId }) => {
+        const room = io.sockets.adapter.rooms.get(String(userId));
+        socket.emit("user-status", { userId, online: Boolean(room && room.size) });
+      });
+      
+    });
+    io.on("connection", (socket) => {
+      socket.on("messages-seen", async ({ messageIds, fromUserId, toUserId }) => {
+        // 1) update DB as seen (optional but recommended)
+        // await markMessagesSeen(messageIds, fromUserId);
+    
+        // 2) notify original sender that receiver has seen them
+        io.to(String(toUserId)).emit("messages-seen", {
+          messageIds,
+          fromUserId,
+          toUserId
+        });
+      });
+    
+      socket.on("message-seen", async ({ messageIds, fromUserId, toUserId, messageId }) => {
+        const ids = Array.isArray(messageIds) ? messageIds : [messageId].filter(Boolean);
+    
+        // await markMessagesSeen(ids, fromUserId);
+    
+        io.to(String(toUserId)).emit("message-seen", {
+          messageIds: ids,
+          fromUserId,
+          toUserId
+        });
       });
     });
     

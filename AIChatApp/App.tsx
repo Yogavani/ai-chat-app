@@ -38,9 +38,14 @@ import {
 
 import React from "react";
 import AppNavigator from "./src/navigation/AppNavigator";
+import { AppThemeProvider } from "./src/theme/ThemeContext";
 
 const App = () => {
-  return <AppNavigator />;
+  return (
+    <AppThemeProvider>
+      <AppNavigator />
+    </AppThemeProvider>
+  );
 };
 
 const styles = StyleSheet.create({
