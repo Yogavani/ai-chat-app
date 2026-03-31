@@ -58,12 +58,27 @@ exports.getUserById = async (userId) => {
 };
 
 exports.registerUser = async (data) => {
+  const name = data?.name?.trim?.();
+  const email = data?.email?.trim?.();
+  const password = data?.password;
 
-  const hashedPassword = await bcrypt.hash(data.password, 10);
+  if (!name) {
+    throw { statusCode: 400, message: "name is required" };
+  }
+
+  if (!email) {
+    throw { statusCode: 400, message: "email is required" };
+  }
+
+  if (!password) {
+    throw { statusCode: 400, message: "password is required" };
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
 
   const user = {
-    name: data.name,
-    email: data.email,
+    name,
+    email,
     password: hashedPassword
   };
 
@@ -72,6 +87,10 @@ exports.registerUser = async (data) => {
     message: "User registered successfully",
     userId: result.insertId
   };
+};
+
+exports.createUser = async (data) => {
+  return exports.registerUser(data);
 };
 
 exports.loginUser = async (data) => {

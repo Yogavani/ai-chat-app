@@ -22,13 +22,19 @@ exports.getUsers = async (request, reply) => {
 };
 
 exports.registerUser = async (request, reply) => {
-    try {
-      const user = await userService.registerUser(request.body);
-      return user;
-    } catch (error) {
-      reply.code(500).send(error);
-    }
-  };
+  try {
+    const user = await userService.registerUser(request.body);
+    return user;
+  } catch (error) {
+    const statusCode =
+      Number(error?.statusCode) >= 400 && Number(error?.statusCode) < 600
+        ? Number(error.statusCode)
+        : 500;
+    reply.code(statusCode).send({
+      message: error?.message || "Unable to register user"
+    });
+  }
+};
 
   exports.loginUser = async (request, reply) => {
 
