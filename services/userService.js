@@ -17,6 +17,7 @@ const {
   imageUnderstandingWithGemini
 } = require("./aiService");
 const { sendNotification } = require("./firebaseService");
+const { logEvent } = require("./eventLogger");
 const AI_BOT_USER_ID = 9999;
 const MAX_AI_CONTEXT_MESSAGES = 20;
 const AUTO_REPLY_DELAY_MS = Number(process.env.AUTO_REPLY_DELAY_MS || 10000);
@@ -83,6 +84,7 @@ exports.registerUser = async (data) => {
   };
 
   const result = await userDao.createUser(user);
+  await logEvent(result.insertId, "user_registered", { email });
   return {
     message: "User registered successfully",
     userId: result.insertId
@@ -98,6 +100,10 @@ exports.loginUser = async (data) => {
   const user = await userDao.getUserByEmail(data.email);
 
   if (!user) {
+    await logEvent(null, "login_failed", {
+      email: data?.email || "",
+      reason: "user_not_found"
+    });
     throw { message: "User not found" };
   }
 
@@ -107,6 +113,10 @@ exports.loginUser = async (data) => {
   );
 
   if (!passwordMatch) {
+    await logEvent(user.id, "login_failed", {
+      email: user.email,
+      reason: "invalid_password"
+    });
     throw { message: "Invalid password" };
   }
 
@@ -116,6 +126,7 @@ exports.loginUser = async (data) => {
     { expiresIn: "1d" }
   );
 
+  await logEvent(user.id, "login_success", { email: user.email });
   return {
     token,
     user
@@ -139,6 +150,10 @@ exports.sendMessage = async (data) => {
         receiver_id: data.receiver_id,
         message: data.message
       });
+      await logEvent(data.sender_id, "message_sent_ai", {
+        receiverId: data.receiver_id,
+        messageId: userMessageResult.insertId
+      });
 
       const conversation = await messageDao.getMessages(data.sender_id, AI_BOT_USER_ID);
       const aiContext = conversation
@@ -154,6 +169,10 @@ exports.sendMessage = async (data) => {
         sender_id: AI_BOT_USER_ID,
         receiver_id: data.sender_id,
         message: aiReply
+      });
+      await logEvent(AI_BOT_USER_ID, "ai_reply_sent", {
+        receiverId: data.sender_id,
+        messageId: aiMessageResult.insertId
       });
 
       return {
@@ -174,6 +193,10 @@ exports.sendMessage = async (data) => {
     }
 
     const result = await messageDao.sendMessage(data);
+    await logEvent(data.sender_id, "message_sent", {
+      receiverId: data.receiver_id,
+      messageId: result.insertId
+    });
 
     try {
       const receiver = await userDao.getUserById(data.receiver_id);
