@@ -166,7 +166,7 @@ const AIChatScreen = () => {
     title: string
   ) => {
     navigation.push("Chat", {
-      receiverId: 9999,
+      receiverId: 9999999,
       receiverName: title,
       aiHubAction: action,
       aiHubMode: mode

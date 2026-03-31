@@ -1,10 +1,10 @@
 import React from "react";
-import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
+import { DarkTheme, DefaultTheme, NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useEffect, useState } from "react";
-import { StatusBar } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { StatusBar, StyleSheet, Text, TouchableOpacity } from "react-native";
 import { Bot, Compass, House, Settings as SettingsIcon } from "lucide-react-native";
 
 
@@ -19,6 +19,9 @@ import ExploreScreen from "../screens/ExploreScreen";
 import PremiumScreen from "../screens/PremiumScreen";
 import { MainTabParamList, RootStackParamList } from "./navigation";
 import { useAppTheme } from "../theme/ThemeContext";
+import { ensureSocketConnection, socket } from "../services/socket";
+import API from "../services/api";
+import { getUsers } from "../services/userService";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -67,6 +70,16 @@ const MainTabs = ({ onLogoutSuccess }: { onLogoutSuccess: () => void }) => {
 
 const AppNavigator = () => {
     const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+    const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+    const [activeChatUserId, setActiveChatUserId] = useState<number | null>(null);
+    const [notificationBanner, setNotificationBanner] = useState<{
+        senderId: number;
+        title: string;
+        preview: string;
+    } | null>(null);
+    const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastIncomingBySenderRef = useRef<Map<number, number>>(new Map());
+    const navigationRef = useNavigationContainerRef<RootStackParamList>();
     const { resolvedTheme, colors } = useAppTheme();
 
     useEffect(() => {
@@ -75,6 +88,9 @@ const AppNavigator = () => {
 
     const checkLogin = async () => {
         const token = await AsyncStorage.getItem("token");
+        const storedUserId = await AsyncStorage.getItem("userId");
+        const parsedUserId = storedUserId ? Number(storedUserId) : null;
+        setCurrentUserId(parsedUserId && !Number.isNaN(parsedUserId) ? parsedUserId : null);
 
         if (token) {
             setIsLoggedIn(true);
@@ -83,12 +99,141 @@ const AppNavigator = () => {
         }
     };
 
+    useEffect(() => {
+        if (!isLoggedIn || !currentUserId) return;
+
+        const onConnect = () => {
+            socket.emit("join", currentUserId);
+        };
+
+        const onNewMessage = (payload: any) => {
+            const receiverId = Number(payload?.receiver_id);
+            const senderId = Number(payload?.sender_id);
+
+            if (!receiverId || !senderId) return;
+            if (receiverId !== currentUserId) return;
+            if (senderId === 9999999) return;
+            if (activeChatUserId === senderId) return;
+
+            const textPreview = String(payload?.message || "").trim();
+            setNotificationBanner({
+                senderId,
+                title: String(payload?.sender_name || payload?.senderName || "New message"),
+                preview: textPreview || "You have a new message"
+            });
+        };
+
+        socket.on("connect", onConnect);
+        socket.on("new-message", onNewMessage);
+
+        if (socket.connected) {
+            onConnect();
+        } else {
+            ensureSocketConnection();
+        }
+
+        return () => {
+            socket.off("connect", onConnect);
+            socket.off("new-message", onNewMessage);
+        };
+    }, [isLoggedIn, currentUserId, activeChatUserId]);
+
+    useEffect(() => {
+        lastIncomingBySenderRef.current.clear();
+    }, [currentUserId]);
+
+    useEffect(() => {
+        if (!isLoggedIn || !currentUserId) return;
+
+        let isMounted = true;
+
+        const readLatestIncoming = async () => {
+            try {
+                const allUsers = await getUsers();
+                const contacts = (allUsers || []).filter((user: any) => Number(user?.id) !== currentUserId);
+
+                await Promise.all(
+                    contacts.map(async (user: any) => {
+                        const userId = Number(user?.id);
+                        if (!userId || Number.isNaN(userId)) return;
+
+                        const response = await API.get(`/receive-message/${currentUserId}/${userId}`);
+                        const conversation = Array.isArray(response.data) ? response.data : [];
+                        const latestIncoming = [...conversation]
+                            .reverse()
+                            .find(
+                                (item: any) =>
+                                    Number(item?.sender_id) === userId &&
+                                    Number(item?.receiver_id) === currentUserId
+                            );
+                        if (!latestIncoming) return;
+
+                        const latestId = Number(latestIncoming?.id);
+                        if (!latestId || Number.isNaN(latestId)) return;
+
+                        const previousId = lastIncomingBySenderRef.current.get(userId);
+                        lastIncomingBySenderRef.current.set(userId, latestId);
+
+                        if (previousId === undefined) return;
+                        if (latestId <= previousId) return;
+                        if (activeChatUserId === userId) return;
+                        if (!isMounted) return;
+
+                        setNotificationBanner({
+                            senderId: userId,
+                            title: String(user?.name || "New message"),
+                            preview: String(latestIncoming?.message || "You have a new message")
+                        });
+                    })
+                );
+            } catch {
+                // noop: notification polling should never block app usage
+            }
+        };
+
+        void readLatestIncoming();
+        const interval = setInterval(() => {
+            void readLatestIncoming();
+        }, 7000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
+    }, [isLoggedIn, currentUserId, activeChatUserId]);
+
+    useEffect(() => {
+        if (!notificationBanner) return;
+        if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = setTimeout(() => {
+            setNotificationBanner(null);
+            hideTimerRef.current = null;
+        }, 4000);
+
+        return () => {
+            if (hideTimerRef.current) {
+                clearTimeout(hideTimerRef.current);
+                hideTimerRef.current = null;
+            }
+        };
+    }, [notificationBanner]);
+
     if (isLoggedIn === null) {
         return null;
     }
 
     return (
         <NavigationContainer
+            ref={navigationRef}
+            onStateChange={() => {
+                const route = navigationRef.getCurrentRoute();
+                if (route?.name === "Chat") {
+                    const receiverId = Number((route.params as any)?.receiverId);
+                    setActiveChatUserId(Number.isNaN(receiverId) ? null : receiverId);
+                } else {
+                    setActiveChatUserId(null);
+                }
+            }}
             theme={{
                 ...(resolvedTheme === "dark" ? DarkTheme : DefaultTheme),
                 colors: {
@@ -143,9 +288,61 @@ const AppNavigator = () => {
                     </>
                 )}
             </Stack.Navigator>
+            {isLoggedIn && notificationBanner ? (
+                <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() => {
+                        setNotificationBanner(null);
+                        navigationRef.navigate("Chat", {
+                            receiverId: notificationBanner.senderId,
+                            receiverName: notificationBanner.title
+                        });
+                    }}
+                    style={[
+                        styles.inAppNotification,
+                        {
+                            backgroundColor: colors.card,
+                            borderColor: colors.border
+                        }
+                    ]}
+                >
+                    <Text style={[styles.inAppNotificationTitle, { color: colors.text }]} numberOfLines={1}>
+                        {notificationBanner.title}
+                    </Text>
+                    <Text
+                        style={[styles.inAppNotificationPreview, { color: colors.secondaryText }]}
+                        numberOfLines={1}
+                    >
+                        {notificationBanner.preview}
+                    </Text>
+                </TouchableOpacity>
+            ) : null}
         </NavigationContainer>
 
     );
 };
 
 export default AppNavigator;
+
+const styles = StyleSheet.create({
+    inAppNotification: {
+        position: "absolute",
+        top: 10,
+        left: 12,
+        right: 12,
+        borderWidth: 1,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        zIndex: 20,
+        elevation: 4
+    },
+    inAppNotificationTitle: {
+        fontSize: 14,
+        fontWeight: "700"
+    },
+    inAppNotificationPreview: {
+        marginTop: 2,
+        fontSize: 13
+    }
+});

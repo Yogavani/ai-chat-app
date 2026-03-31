@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { View, TextInput, TouchableOpacity, StyleSheet, Text, Image } from "react-native";
+import { View, TextInput, TouchableOpacity, StyleSheet, Text, Image, ActivityIndicator } from "react-native";
 import API from "../services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RootStackParamList } from "../navigation/navigation";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { LoginResponse } from "../services/apiTypes";
 import { useAppTheme } from "../theme/ThemeContext";
+import { Eye, EyeOff } from "lucide-react-native";
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -17,12 +18,17 @@ type Props = {
   };
 
 const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
+    const LOADER_PURPLE = "#7423d7";
     const { colors } = useAppTheme();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [message, setMessage] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleLogin = async () => {
+        if (isLoading) return;
+        setIsLoading(true);
         try {
             const response = await API.post<LoginResponse>("/login", {
                 email,
@@ -39,6 +45,7 @@ const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
 
             if (!token) {
                 setMessage("Login failed: token missing in response");
+                setIsLoading(false);
                 return;
             }
 
@@ -60,6 +67,8 @@ const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
 
             setMessage(error.response?.data?.message || "Login failed");
 
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -78,21 +87,39 @@ const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
                 placeholderTextColor={colors.secondaryText}
             />
 
-            <TextInput
-                placeholder="Password"
-                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.inputBackground, color: colors.text }]}
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-                placeholderTextColor={colors.secondaryText}
-            />
+            <View style={[styles.passwordInputWrap, { borderColor: colors.border, backgroundColor: colors.inputBackground }]}>
+                <TextInput
+                    placeholder="Password"
+                    style={[styles.passwordInput, { color: colors.text }]}
+                    secureTextEntry={!showPassword}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholderTextColor={colors.secondaryText}
+                />
+                <TouchableOpacity
+                    style={styles.eyeButton}
+                    activeOpacity={0.8}
+                    onPress={() => setShowPassword((prev) => !prev)}
+                >
+                    {showPassword ? (
+                        <EyeOff size={18} color={colors.secondaryText} />
+                    ) : (
+                        <Eye size={18} color={colors.secondaryText} />
+                    )}
+                </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
                 style={[styles.primaryButton, { backgroundColor: colors.primary }]}
                 onPress={handleLogin}
                 activeOpacity={0.9}
+                disabled={isLoading}
             >
-                <Text style={styles.primaryButtonText}>Login</Text>
+                {isLoading ? (
+                    <ActivityIndicator color={LOADER_PURPLE} />
+                ) : (
+                    <Text style={styles.primaryButtonText}>Login</Text>
+                )}
             </TouchableOpacity>
 
             {message ? <Text style={[styles.message, { color: colors.primary }]}>{message}</Text> : null}
@@ -135,6 +162,20 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         marginBottom: 10,
         padding: 10
+    },
+    passwordInputWrap: {
+        borderWidth: 1,
+        borderRadius: 0,
+        marginBottom: 10,
+        flexDirection: "row",
+        alignItems: "center"
+    },
+    passwordInput: {
+        flex: 1,
+        padding: 10
+    },
+    eyeButton: {
+        paddingHorizontal: 10
     },
     message: {
         marginTop: 20,

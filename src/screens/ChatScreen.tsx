@@ -15,7 +15,7 @@ import {
   PermissionsAndroid,
   Linking
 } from "react-native";
-import { Paperclip, X } from "lucide-react-native";
+import { FileText, Paperclip, X } from "lucide-react-native";
 import Video from "react-native-video";
 import AudioRecorderPlayer from "react-native-nitro-sound";
 import { launchImageLibrary } from "react-native-image-picker";
@@ -166,7 +166,7 @@ const toNumberOrNull = (value: unknown) => {
 
 const buildAIConversationContext = (chatMessages: Message[], currentUserId: number) => {
   return chatMessages
-    .filter((item) => item.sender_id === currentUserId || item.sender_id === 9999)
+    .filter((item) => item.sender_id === currentUserId || item.sender_id === 9999999)
     .slice(-20)
     .map((item) => ({
       role: item.sender_id === currentUserId ? "user" : "assistant",
@@ -502,7 +502,7 @@ const ChatScreen = ({ route, navigation }: Props) => {
     aiHubAction = "ask",
     aiHubMode
   } = route.params;
-  const isAIChat = receiverId === 9999;
+  const isAIChat = receiverId === 9999999;
   const isVoiceCaptureMode =
     isAIChat && (aiHubAction === "speechToText" || aiHubAction === "voiceAgent");
   const isAnalyzerMode =
@@ -726,12 +726,6 @@ const ChatScreen = ({ route, navigation }: Props) => {
       toUserId: receiverId
     });
 
-    socket.emit("message-seen", {
-      messageIds: incomingUnreadIds,
-      fromUserId: senderId,
-      toUserId: receiverId
-    });
-
     setSeenMessageIds((prev) => {
       const next = new Set(prev);
       incomingUnreadIds.forEach((id) => next.add(id));
@@ -797,11 +791,6 @@ const ChatScreen = ({ route, navigation }: Props) => {
           fromUserId: senderId,
           toUserId: receiverId
         });
-        socket.emit("message-seen", {
-          messageIds: [msg.id],
-          fromUserId: senderId,
-          toUserId: receiverId
-        });
         setSeenMessageIds((prev) => {
           const next = new Set(prev);
           next.add(msg.id);
@@ -846,18 +835,6 @@ const ChatScreen = ({ route, navigation }: Props) => {
       }
     };
 
-    const onUserOnline = (payload: any) => {
-      if (payload?.userId === receiverId) {
-        setIsReceiverOnline(true);
-      }
-    };
-
-    const onUserOffline = (payload: any) => {
-      if (payload?.userId === receiverId) {
-        setIsReceiverOnline(false);
-      }
-    };
-
     const onMessageSeen = (payload: any) => {
       const ids: number[] = [];
 
@@ -894,8 +871,6 @@ const ChatScreen = ({ route, navigation }: Props) => {
     socket.on("typing", onTyping);
     socket.on("stop-typing", onStopTyping);
     socket.on("user-status", onUserStatus);
-    socket.on("user-online", onUserOnline);
-    socket.on("user-offline", onUserOffline);
     socket.on("message-seen", onMessageSeen);
     socket.on("messages-seen", onMessageSeen);
 
@@ -905,10 +880,6 @@ const ChatScreen = ({ route, navigation }: Props) => {
       ensureSocketConnection();
     }
 
-    socket.emit("presence:watch", {
-      watcherId: senderId,
-      targetUserId: receiverId
-    });
     socket.emit("get-user-status", { userId: receiverId });
   
     return () => {
@@ -922,8 +893,6 @@ const ChatScreen = ({ route, navigation }: Props) => {
       socket.off("typing", onTyping);
       socket.off("stop-typing", onStopTyping);
       socket.off("user-status", onUserStatus);
-      socket.off("user-online", onUserOnline);
-      socket.off("user-offline", onUserOffline);
       socket.off("message-seen", onMessageSeen);
       socket.off("messages-seen", onMessageSeen);
       if (typingStopTimerRef.current) {
@@ -939,6 +908,17 @@ const ChatScreen = ({ route, navigation }: Props) => {
         suggestionDebounceRef.current = null;
       }
     };
+  }, [senderId, receiverId, isAIChat]);
+
+  useEffect(() => {
+    if (isAIChat) return;
+    if (!senderId) return;
+
+    const interval = setInterval(() => {
+      fetchMessages();
+    }, 3500);
+
+    return () => clearInterval(interval);
   }, [senderId, receiverId, isAIChat]);
 
   useEffect(() => {
@@ -1815,7 +1795,10 @@ const ChatScreen = ({ route, navigation }: Props) => {
                   styles.typingBubble
                 ]}
               >
-                <Text style={[styles.messageText, styles.theirMessageText, { color: colors.text }]}>
+                <Text
+                  style={[styles.messageText, styles.theirMessageText, styles.typingText, { color: colors.text }]}
+                  numberOfLines={1}
+                >
                   {isAIChat &&
                   (aiHubAction === "speechToText" || aiHubAction === "voiceAgent")
                     ? `Chattr AI is speaking${typingDots}`
@@ -2071,6 +2054,52 @@ const ChatScreen = ({ route, navigation }: Props) => {
         </View>
       ) : null}
 
+      {!isAIChat && selectedChatAttachment ? (
+        <View
+          style={[
+            styles.attachmentPreviewRow,
+            { backgroundColor: colors.card, borderTopColor: colors.border }
+          ]}
+        >
+          <Paperclip size={16} color={colors.primary} strokeWidth={2.2} />
+          <View style={styles.attachmentMeta}>
+            <Text
+              style={[styles.attachmentPreviewText, { color: colors.secondaryText }]}
+              numberOfLines={1}
+            >
+              {isChatAttachmentUploading
+                ? "Uploading attachment..."
+                : selectedChatAttachment.fileName || "media"}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => setSelectedChatAttachment(null)}>
+            <X size={18} color={colors.secondaryText} strokeWidth={2.2} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {isAnalyzerMode && selectedAnalyzerFile ? (
+        <View
+          style={[
+            styles.attachmentPreviewRow,
+            { backgroundColor: colors.card, borderTopColor: colors.border }
+          ]}
+        >
+          <FileText size={16} color={colors.primary} strokeWidth={2.2} />
+          <View style={styles.attachmentMeta}>
+            <Text
+              style={[styles.attachmentPreviewText, { color: colors.secondaryText }]}
+              numberOfLines={1}
+            >
+              {selectedAnalyzerFile.fileName || "file"}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => setSelectedAnalyzerFile(null)}>
+            <X size={18} color={colors.secondaryText} strokeWidth={2.2} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       <View
         style={[
           styles.inputRow,
@@ -2126,14 +2155,11 @@ const ChatScreen = ({ route, navigation }: Props) => {
             disabled={isAnalyzerUploading}
           >
             <View style={styles.pinIconWrap}>
-              <Text
-                style={[
-                  styles.pinButtonText,
-                  { color: selectedAnalyzerFile ? colors.primary : colors.secondaryText }
-                ]}
-              >
-                📎
-              </Text>
+              <FileText
+                size={18}
+                color={selectedAnalyzerFile ? colors.primary : colors.secondaryText}
+                strokeWidth={2.2}
+              />
             </View>
           </TouchableOpacity>
         ) : null}
@@ -2201,30 +2227,6 @@ const ChatScreen = ({ route, navigation }: Props) => {
           </TouchableOpacity>
         ) : null}
       </View>
-      {!isAIChat && selectedChatAttachment ? (
-        <View style={[styles.inputRow, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-          {selectedChatAttachment.remoteUrl && isLikelyImageUrl(selectedChatAttachment.remoteUrl) ? (
-            <Image source={{ uri: selectedChatAttachment.remoteUrl }} style={styles.attachmentThumb} />
-          ) : null}
-          <View style={styles.attachmentMeta}>
-            <Text style={[styles.suggestionLoadingText, { color: colors.secondaryText }]}>
-              {isChatAttachmentUploading
-                ? "Uploading attachment..."
-                : `Attached: ${selectedChatAttachment.fileName || "media"}`}
-            </Text>
-          </View>
-          <TouchableOpacity onPress={() => setSelectedChatAttachment(null)}>
-            <X size={18} color={colors.secondaryText} strokeWidth={2.2} />
-          </TouchableOpacity>
-        </View>
-      ) : null}
-      {isAnalyzerMode && selectedAnalyzerFile ? (
-        <View style={[styles.inputRow, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-          <Text style={[styles.suggestionLoadingText, { color: colors.secondaryText }]}>
-            Selected: {selectedAnalyzerFile.fileName || "file"}
-          </Text>
-        </View>
-      ) : null}
 
       {playingAudioUrl ? (
         <Video
@@ -2302,8 +2304,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject
   },
   typingBubble: {
-    maxWidth: 90,
-    minWidth: 48
+    maxWidth: 220,
+    minWidth: 120
+  },
+  typingText: {
+    lineHeight: 18
   },
   messagesContent: {
     paddingHorizontal: 12,
@@ -2418,6 +2423,19 @@ const styles = StyleSheet.create({
   suggestionLoadingText: {
     fontSize: 13
   },
+  attachmentPreviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+    backgroundColor: "#ffffff",
+    gap: 8
+  },
+  attachmentPreviewText: {
+    fontSize: 13
+  },
   modesWrap: {
     width: "100%"
   },
@@ -2461,14 +2479,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.5
-  },
-  pinButtonText: {
-    fontSize: 19,
-    lineHeight: 19,
-    textAlign: "center",
-    includeFontPadding: false,
-    textAlignVertical: "center",
-    transform: [{ translateX: 1 }, { translateY: -0.5 }]
   },
   pinIconWrap: {
     width: "100%",
@@ -2524,12 +2534,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textAlign: "right",
     color: "#ede9fe"
-  },
-  attachmentThumb: {
-    width: 34,
-    height: 34,
-    borderRadius: 6,
-    marginRight: 10
   },
   attachmentMeta: {
     flex: 1

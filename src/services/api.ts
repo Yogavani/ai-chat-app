@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "http://192.168.13.42:5000"
+  baseURL: "https://ai-chat-app-s971.onrender.com"
 });
 
 export default API;

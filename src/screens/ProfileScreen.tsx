@@ -169,7 +169,7 @@ const ProfileScreen = ({ route }: Props) => {
       <View style={[styles.aboutCard, { backgroundColor: colors.card, marginTop: 12 }]}>
         <Text style={[styles.label, { color: colors.secondaryText }]}>AI Features</Text>
 
-        {userId !== 9999 ? (
+        {userId !== 9999999 ? (
           <View style={styles.toggleRow}>
             <Text style={[styles.toggleText, { color: colors.text }]}>Auto Reply</Text>
             <Switch

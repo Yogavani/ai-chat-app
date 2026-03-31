@@ -31,6 +31,12 @@ type StatusItem = {
   viewed?: boolean;
   statusCount?: number;
   statusIds?: number[];
+  items?: Array<{
+    id: number;
+    time: string;
+    caption?: string;
+    mediaUrl?: string;
+  }>;
 };
 
 type PickedMediaAsset = {
@@ -51,6 +57,7 @@ const AvatarWithStatusRing = ({
   ringColor,
   segmentCount,
   showAddBadge,
+  onAddPress,
   colors
 }: {
   imageUri: string;
@@ -58,6 +65,7 @@ const AvatarWithStatusRing = ({
   ringColor: string;
   segmentCount: number;
   showAddBadge?: boolean;
+  onAddPress?: () => void;
   colors: ReturnType<typeof useAppTheme>["colors"];
 }) => {
   const normalizedCount = Math.max(0, Math.min(MAX_RING_SEGMENTS, segmentCount));
@@ -124,9 +132,13 @@ const AvatarWithStatusRing = ({
       </View>
 
       {showAddBadge ? (
-        <View style={[styles.addBadge, { backgroundColor: colors.primary }]}>
+        <TouchableOpacity
+          style={[styles.addBadge, { backgroundColor: colors.primary }]}
+          activeOpacity={0.85}
+          onPress={onAddPress}
+        >
           <Plus size={11} color="#fff" strokeWidth={3} />
-        </View>
+        </TouchableOpacity>
       ) : null}
     </View>
   );
@@ -203,6 +215,7 @@ const ExploreScreen = () => {
   const [myStatusViewerVisible, setMyStatusViewerVisible] = useState(false);
   const [otherStatusViewerVisible, setOtherStatusViewerVisible] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<StatusItem | null>(null);
+  const [selectedStatusIndex, setSelectedStatusIndex] = useState(0);
   const [statusText, setStatusText] = useState("");
   const [pickedMediaUrl, setPickedMediaUrl] = useState("");
   const [pickedMediaAsset, setPickedMediaAsset] = useState<PickedMediaAsset | null>(null);
@@ -378,7 +391,13 @@ const ExploreScreen = () => {
             ),
             viewed: allViewed,
             statusCount: rows.length,
-            statusIds
+            statusIds,
+            items: rows.map((entry) => ({
+              id: Number(entry.id),
+              time: formatRelativeTime(entry.created_at),
+              caption: entry.text_content || "",
+              mediaUrl: toAbsoluteImageUrl(entry.media_url || "")
+            }))
           };
         })
       );
@@ -573,7 +592,35 @@ const ExploreScreen = () => {
       });
 
     setSelectedStatus(item);
+    setSelectedStatusIndex(0);
     setOtherStatusViewerVisible(true);
+  };
+
+  const selectedStatusItems =
+    selectedStatus?.items?.length
+      ? selectedStatus.items
+      : selectedStatus
+      ? [
+          {
+            id: selectedStatus.id,
+            time: selectedStatus.time,
+            caption: selectedStatus.caption,
+            mediaUrl: selectedStatus.mediaUrl
+          }
+        ]
+      : [];
+
+  const currentSelectedStatus =
+    selectedStatusItems[selectedStatusIndex] || selectedStatusItems[0] || null;
+
+  const goToNextSelectedStatus = () => {
+    setSelectedStatusIndex((prev) =>
+      Math.min(prev + 1, Math.max(0, selectedStatusItems.length - 1))
+    );
+  };
+
+  const goToPreviousSelectedStatus = () => {
+    setSelectedStatusIndex((prev) => Math.max(prev - 1, 0));
   };
 
   return (
@@ -599,7 +646,8 @@ const ExploreScreen = () => {
             initial={myStatus?.name?.trim()?.charAt(0)?.toUpperCase() || "Y"}
             ringColor="#22c55e"
             segmentCount={hasMyStatus ? Math.max(1, myStatusCount) : 0}
-            showAddBadge={!hasMyStatus}
+            showAddBadge
+            onAddPress={pickStatusMedia}
             colors={colors}
           />
 
@@ -820,28 +868,58 @@ const ExploreScreen = () => {
             </TouchableOpacity>
           </View>
           <View style={styles.viewerContent}>
-            {selectedStatus?.mediaUrl ? (
-              isVideoUrl(selectedStatus.mediaUrl) ? (
+            {currentSelectedStatus?.mediaUrl ? (
+              isVideoUrl(currentSelectedStatus.mediaUrl) ? (
                 <Video
-                  key={`other-status-video-${selectedStatus.id}`}
-                  source={{ uri: selectedStatus.mediaUrl }}
+                  key={`other-status-video-${currentSelectedStatus.id}-${selectedStatusIndex}`}
+                  source={{ uri: currentSelectedStatus.mediaUrl }}
                   style={styles.viewerVideo}
                   controls
                   repeat
                   resizeMode="contain"
                 />
               ) : (
-                <Image source={{ uri: selectedStatus.mediaUrl }} style={styles.viewerImage} resizeMode="contain" />
+                <Image source={{ uri: currentSelectedStatus.mediaUrl }} style={styles.viewerImage} resizeMode="contain" />
               )
             ) : (
               <View style={styles.viewerEmpty}>
                 <Text style={styles.viewerEmptyText}>No media found</Text>
               </View>
             )}
+            {selectedStatusItems.length > 1 ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.viewerNavBtn, styles.viewerNavLeft]}
+                  onPress={goToPreviousSelectedStatus}
+                  disabled={selectedStatusIndex === 0}
+                >
+                  <Text style={[styles.viewerNavText, selectedStatusIndex === 0 && styles.viewerNavDisabled]}>{"<"}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.viewerNavBtn, styles.viewerNavRight]}
+                  onPress={goToNextSelectedStatus}
+                  disabled={selectedStatusIndex >= selectedStatusItems.length - 1}
+                >
+                  <Text
+                    style={[
+                      styles.viewerNavText,
+                      selectedStatusIndex >= selectedStatusItems.length - 1 && styles.viewerNavDisabled
+                    ]}
+                  >
+                    {">"}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
             <View style={styles.viewerCaptionWrap}>
-              <Text style={styles.viewerTime}>{selectedStatus?.time || ""}</Text>
-              {!!selectedStatus?.caption && (
-                <Text style={styles.viewerCaption}>{selectedStatus.caption}</Text>
+              {selectedStatusItems.length > 1 ? (
+                <Text style={styles.viewerIndex}>
+                  {selectedStatusIndex + 1}/{selectedStatusItems.length}
+                </Text>
+              ) : null}
+              <Text style={styles.viewerTime}>{currentSelectedStatus?.time || ""}</Text>
+              {!!currentSelectedStatus?.caption && (
+                <Text style={styles.viewerCaption}>{currentSelectedStatus.caption}</Text>
               )}
             </View>
           </View>
