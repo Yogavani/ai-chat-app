@@ -1,4 +1,40 @@
+# Dependencies
 node_modules/
-uploads/
+
+# Environment and secrets
 .env
 config/serviceAccountKey.json
+**/serviceAccountKey.json
+
+# Backend local artifacts
+uploads/
+ai-chat-backend/
+
+# IDE / OS files
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Android generated artifacts
+android/.cxx/
+android/build/
+android/app/build/
+android/
+AIChatApp/android/.cxx/
+AIChatApp/android/build/
+AIChatApp/android/app/build/
+AIChatApp/android/
+
+# iOS generated artifacts
+ios/Pods/
+ios/build/
+ios/DerivedData/
+ios/
+AIChatApp/ios/Pods/
+AIChatApp/ios/build/
+AIChatApp/ios/DerivedData/
+AIChatApp/ios/
+
+# Ruby / vendor artifacts
+vendor/
