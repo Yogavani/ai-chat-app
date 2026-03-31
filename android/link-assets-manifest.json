@@ -1,0 +1,25 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "src/assests/fonts/AlfaSlabOne-Regular.ttf",
+      "sha1": "3379279f774fdb42b7e4bb027efb64337d791f1c"
+    },
+    {
+      "path": "src/assests/fonts/DancingScript-VariableFont_wght.ttf",
+      "sha1": "a54f708272bdad7e9a89c065fc07dffbeea7b5fb"
+    },
+    {
+      "path": "src/assests/images/chattr_ai_logo.png",
+      "sha1": "9bdc5991329d812db25104aabacfbcb74f43dad8"
+    },
+    {
+      "path": "src/assests/images/wall_paper_dark2.jpeg",
+      "sha1": "4f2830a282001c25e54f1398ad9265478c221056"
+    },
+    {
+      "path": "src/assests/images/wallpaper_dark.jpeg",
+      "sha1": "5281e4e475ee0420f2768aebf52858bf8e50eca7"
+    }
+  ]
+}
