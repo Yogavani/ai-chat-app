@@ -1,7 +1,32 @@
 const userHandler = require("../controllers/userController");
 const { USER } = require("../constants/messages");
+const db = require("../db");
 
 async function userRoutes(server, options) {
+  server.post("/signup", async (request, reply) => {
+    try {
+      const { name, email, password } = request.body || {};
+
+      const [existingUsers] = await db.query(
+        "SELECT id FROM users WHERE email = ? LIMIT 1",
+        [email]
+      );
+
+      if (existingUsers.length > 0) {
+        return reply.code(400).send({ error: "User already exists" });
+      }
+
+      await db.query(
+        "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
+        [name, email, password]
+      );
+
+      return { message: "Signup successful" };
+    } catch (error) {
+      request.log.error(error);
+      return reply.code(500).send({ error: "Internal server error" });
+    }
+  });
 
   server.get(USER.GET_USERS, userHandler.getUsers);
   server.post(USER.REGISTER, userHandler.registerUser);
