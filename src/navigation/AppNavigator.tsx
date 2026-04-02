@@ -4,7 +4,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useRef, useState } from "react";
-import { StatusBar, StyleSheet, Text, TouchableOpacity } from "react-native";
+import { StatusBar, StyleSheet, Text, TouchableOpacity, View, Image } from "react-native";
 import { Bot, Compass, House, Settings as SettingsIcon } from "lucide-react-native";
 
 
@@ -22,6 +22,8 @@ import { useAppTheme } from "../theme/ThemeContext";
 import { ensureSocketConnection, socket } from "../services/socket";
 import API from "../services/api";
 import { getUsers } from "../services/userService";
+import { toAbsoluteImageUrl } from "../utils/image";
+import { subscribeFcmTokenRefresh, syncFcmTokenForUser } from "../services/pushNotifications";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -76,15 +78,15 @@ const AppNavigator = () => {
         senderId: number;
         title: string;
         preview: string;
+        profileImage?: string;
+        sentAt?: string | number | null;
     } | null>(null);
+    const [failedNotificationImageSenders, setFailedNotificationImageSenders] = useState<number[]>([]);
     const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastIncomingBySenderRef = useRef<Map<number, number>>(new Map());
+    const senderProfileByIdRef = useRef<Map<number, string>>(new Map());
     const navigationRef = useNavigationContainerRef<RootStackParamList>();
     const { resolvedTheme, colors } = useAppTheme();
-
-    useEffect(() => {
-        checkLogin();
-    }, []);
 
     const checkLogin = async () => {
         const token = await AsyncStorage.getItem("token");
@@ -98,6 +100,30 @@ const AppNavigator = () => {
             setIsLoggedIn(false);
         }
     };
+
+    useEffect(() => {
+        void checkLogin();
+    }, []);
+
+    useEffect(() => {
+        if (!isLoggedIn || !currentUserId) return;
+
+        let unsubscribeRefresh: (() => void) | null = null;
+        let isCancelled = false;
+
+        const initFcmSync = async () => {
+            await syncFcmTokenForUser(currentUserId);
+            if (isCancelled) return;
+            unsubscribeRefresh = subscribeFcmTokenRefresh(currentUserId);
+        };
+
+        void initFcmSync();
+
+        return () => {
+            isCancelled = true;
+            if (unsubscribeRefresh) unsubscribeRefresh();
+        };
+    }, [isLoggedIn, currentUserId]);
 
     useEffect(() => {
         if (!isLoggedIn || !currentUserId) return;
@@ -116,10 +142,16 @@ const AppNavigator = () => {
             if (activeChatUserId === senderId) return;
 
             const textPreview = String(payload?.message || "").trim();
+            const payloadProfileImage = toAbsoluteImageUrl(
+                payload?.sender_profile_image ?? payload?.senderProfileImage ?? payload?.profileImage ?? ""
+            );
+            const knownProfileImage = senderProfileByIdRef.current.get(senderId) || "";
             setNotificationBanner({
                 senderId,
                 title: String(payload?.sender_name || payload?.senderName || "New message"),
-                preview: textPreview || "You have a new message"
+                preview: textPreview || "You have a new message",
+                profileImage: payloadProfileImage || knownProfileImage || undefined,
+                sentAt: payload?.created_at ?? payload?.updated_at ?? Date.now()
             });
         };
 
@@ -140,7 +172,16 @@ const AppNavigator = () => {
 
     useEffect(() => {
         lastIncomingBySenderRef.current.clear();
+        senderProfileByIdRef.current.clear();
+        setFailedNotificationImageSenders([]);
     }, [currentUserId]);
+
+    const formatBannerTime = (rawTime?: string | number | null) => {
+        if (!rawTime) return "";
+        const parsedDate = new Date(rawTime);
+        if (Number.isNaN(parsedDate.getTime())) return "";
+        return parsedDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    };
 
     useEffect(() => {
         if (!isLoggedIn || !currentUserId) return;
@@ -151,6 +192,12 @@ const AppNavigator = () => {
             try {
                 const allUsers = await getUsers();
                 const contacts = (allUsers || []).filter((user: any) => Number(user?.id) !== currentUserId);
+                contacts.forEach((user: any) => {
+                    const userId = Number(user?.id);
+                    if (!userId || Number.isNaN(userId)) return;
+                    const image = toAbsoluteImageUrl(user?.profileImage ?? user?.avatar ?? user?.profile_pic ?? "");
+                    if (image) senderProfileByIdRef.current.set(userId, image);
+                });
 
                 await Promise.all(
                     contacts.map(async (user: any) => {
@@ -182,7 +229,11 @@ const AppNavigator = () => {
                         setNotificationBanner({
                             senderId: userId,
                             title: String(user?.name || "New message"),
-                            preview: String(latestIncoming?.message || "You have a new message")
+                            preview: String(latestIncoming?.message || "You have a new message"),
+                            profileImage: toAbsoluteImageUrl(
+                                user?.profileImage ?? user?.avatar ?? user?.profile_pic ?? ""
+                            ),
+                            sentAt: latestIncoming?.created_at ?? latestIncoming?.updated_at ?? Date.now()
                         });
                     })
                 );
@@ -267,7 +318,13 @@ const AppNavigator = () => {
                             options={{ headerShown: false }}
                         >
                             {() => (
-                                <MainTabs onLogoutSuccess={() => setIsLoggedIn(false)} />
+                                <MainTabs
+                                    onLogoutSuccess={() => {
+                                        setIsLoggedIn(false);
+                                        setCurrentUserId(null);
+                                        setNotificationBanner(null);
+                                    }}
+                                />
                             )}
                         </Stack.Screen>
                         <Stack.Screen name="Chat" component={ChatScreen} />
@@ -280,7 +337,9 @@ const AppNavigator = () => {
                             {(props) => (
                                 <LoginScreen
                                     {...props}
-                                    onLoginSuccess={() => setIsLoggedIn(true)}
+                                    onLoginSuccess={() => {
+                                        void checkLogin();
+                                    }}
                                 />
                             )}
                         </Stack.Screen>
@@ -306,15 +365,45 @@ const AppNavigator = () => {
                         }
                     ]}
                 >
-                    <Text style={[styles.inAppNotificationTitle, { color: colors.text }]} numberOfLines={1}>
-                        {notificationBanner.title}
-                    </Text>
-                    <Text
-                        style={[styles.inAppNotificationPreview, { color: colors.secondaryText }]}
-                        numberOfLines={1}
-                    >
-                        {notificationBanner.preview}
-                    </Text>
+                    <View style={styles.inAppNotificationRow}>
+                        {notificationBanner.profileImage &&
+                        !failedNotificationImageSenders.includes(notificationBanner.senderId) ? (
+                            <Image
+                                source={{ uri: notificationBanner.profileImage }}
+                                style={styles.inAppNotificationAvatar}
+                                onError={() =>
+                                    setFailedNotificationImageSenders((prev) =>
+                                        prev.includes(notificationBanner.senderId)
+                                            ? prev
+                                            : [...prev, notificationBanner.senderId]
+                                    )
+                                }
+                            />
+                        ) : (
+                            <View style={[styles.inAppNotificationAvatarFallback, { backgroundColor: colors.primary }]}>
+                                <Text style={styles.inAppNotificationAvatarInitial}>
+                                    {notificationBanner.title?.trim()?.charAt(0)?.toUpperCase() || "?"}
+                                </Text>
+                            </View>
+                        )}
+
+                        <View style={styles.inAppNotificationTextWrap}>
+                            <View style={styles.inAppNotificationTopLine}>
+                                <Text style={[styles.inAppNotificationTitle, { color: colors.text }]} numberOfLines={1}>
+                                    {notificationBanner.title}
+                                </Text>
+                                <Text style={[styles.inAppNotificationTime, { color: colors.secondaryText }]}>
+                                    {formatBannerTime(notificationBanner.sentAt)}
+                                </Text>
+                            </View>
+                            <Text
+                                style={[styles.inAppNotificationPreview, { color: colors.secondaryText }]}
+                                numberOfLines={1}
+                            >
+                                {notificationBanner.preview}
+                            </Text>
+                        </View>
+                    </View>
                 </TouchableOpacity>
             ) : null}
         </NavigationContainer>
@@ -337,9 +426,45 @@ const styles = StyleSheet.create({
         zIndex: 20,
         elevation: 4
     },
+    inAppNotificationRow: {
+        flexDirection: "row",
+        alignItems: "center"
+    },
+    inAppNotificationAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        marginRight: 10
+    },
+    inAppNotificationAvatarFallback: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        marginRight: 10,
+        alignItems: "center",
+        justifyContent: "center"
+    },
+    inAppNotificationAvatarInitial: {
+        color: "#ffffff",
+        fontWeight: "700",
+        fontSize: 16
+    },
+    inAppNotificationTextWrap: {
+        flex: 1
+    },
+    inAppNotificationTopLine: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center"
+    },
     inAppNotificationTitle: {
         fontSize: 14,
-        fontWeight: "700"
+        fontWeight: "700",
+        flex: 1,
+        marginRight: 8
+    },
+    inAppNotificationTime: {
+        fontSize: 12
     },
     inAppNotificationPreview: {
         marginTop: 2,

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "193273984300",
+    "project_id": "chattrapp-41f9b",
+    "storage_bucket": "chattrapp-41f9b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193273984300:android:07e53e2e503c7fd01ee889",
+        "android_client_info": {
+          "package_name": "com.aichatapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3hkl0ZTwID4SKWPuj_Hb-SpJ4axGAmcA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

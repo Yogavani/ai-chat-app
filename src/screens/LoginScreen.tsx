@@ -115,11 +115,10 @@ const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
                 activeOpacity={0.9}
                 disabled={isLoading}
             >
-                {isLoading ? (
-                    <ActivityIndicator color={LOADER_PURPLE} />
-                ) : (
+                <View style={styles.primaryButtonContent}>
                     <Text style={styles.primaryButtonText}>Login</Text>
-                )}
+                    {isLoading ? <ActivityIndicator color={LOADER_PURPLE} size="small" style={styles.buttonLoader} /> : null}
+                </View>
             </TouchableOpacity>
 
             {message ? <Text style={[styles.message, { color: colors.primary }]}>{message}</Text> : null}
@@ -188,6 +187,13 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         marginTop: 4
+    },
+    primaryButtonContent: {
+        flexDirection: "row",
+        alignItems: "center"
+    },
+    buttonLoader: {
+        marginLeft: 8
     },
     primaryButtonText: {
         color: "#ffffff",

@@ -519,7 +519,6 @@ const ChatScreen = ({ route, navigation }: Props) => {
   const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiReplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSuggestedMessageIdRef = useRef<number | null>(null);
-  const suggestionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioRecorderRef = useRef(AudioRecorderPlayer);
   const recordedAudioPathRef = useRef("");
   const [isSpeechRecording, setIsSpeechRecording] = useState(false);
@@ -902,10 +901,6 @@ const ChatScreen = ({ route, navigation }: Props) => {
       if (aiReplyTimerRef.current) {
         clearTimeout(aiReplyTimerRef.current);
         aiReplyTimerRef.current = null;
-      }
-      if (suggestionDebounceRef.current) {
-        clearTimeout(suggestionDebounceRef.current);
-        suggestionDebounceRef.current = null;
       }
     };
   }, [senderId, receiverId, isAIChat]);
@@ -1597,17 +1592,6 @@ const ChatScreen = ({ route, navigation }: Props) => {
 
   const handleTextChange = (value: string) => {
     setText(value);
-
-    if (!isAIChat && aiSuggestionsEnabled) {
-      if (suggestionDebounceRef.current) {
-        clearTimeout(suggestionDebounceRef.current);
-      }
-      if (value.trim().length > 2) {
-        suggestionDebounceRef.current = setTimeout(() => {
-          fetchSuggestedReplies(value);
-        }, 450);
-      }
-    }
 
     if (senderId === null || isAIChat) return;
 
