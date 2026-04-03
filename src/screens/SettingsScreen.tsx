@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Image,
@@ -12,12 +12,15 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Plus } from "lucide-react-native";
 import { getUsers } from "../services/userService";
 import API from "../services/api";
 import { launchImageLibrary } from "react-native-image-picker";
 import { useAppTheme } from "../theme/ThemeContext";
+import { toAbsoluteImageUrl } from "../utils/image";
+import { setAnalyticsUserProperty, trackEvent } from "../services/analytics";
 
 type LanguageOption = "English" | "Hindi" | "Tamil";
 
@@ -38,28 +41,31 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
   const [profileAbout, setProfileAbout] = useState("Hey there! I am using AIChatApp.");
   const [aboutDraft, setAboutDraft] = useState("Hey there! I am using AIChatApp.");
   const [profileImage, setProfileImage] = useState("");
+  const [profileImageCandidates, setProfileImageCandidates] = useState<string[]>([]);
+  const [profileImageIndex, setProfileImageIndex] = useState(0);
   const [language, setLanguage] = useState<LanguageOption>("English");
   const [isSavingAbout, setIsSavingAbout] = useState(false);
   const [isEditingAbout, setIsEditingAbout] = useState(false);
-
-  useEffect(() => {
-    loadSettings();
-  }, []);
 
   const avatarInitial = useMemo(() => {
     return profileName?.trim()?.charAt(0)?.toUpperCase() || "?";
   }, [profileName]);
 
-  const toAbsoluteImageUrl = (value?: string | null) => {
-    if (!value) return "";
-    if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("file://")) {
-      return value;
-    }
-    const base = API.defaults.baseURL || "";
-    return `${base}${value.startsWith("/") ? value : `/${value}`}`;
+  const buildImageCandidates = (...values: Array<string | null | undefined>) => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    values.forEach((value) => {
+      const absolute = toAbsoluteImageUrl(value || "");
+      if (!absolute || seen.has(absolute)) return;
+      seen.add(absolute);
+      result.push(absolute);
+    });
+
+    return result;
   };
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const [storedUserId, storedLanguage, storedProfileImage, storedProfileAbout] =
         await Promise.all([
@@ -79,7 +85,10 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
       }
 
       if (storedProfileImage) {
-        setProfileImage(toAbsoluteImageUrl(storedProfileImage));
+        const initialCandidates = buildImageCandidates(storedProfileImage);
+        setProfileImageCandidates(initialCandidates);
+        setProfileImage(initialCandidates[0] || "");
+        setProfileImageIndex(0);
       }
 
       if (parsedUserId && !Number.isNaN(parsedUserId)) {
@@ -96,11 +105,19 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
           setProfileAbout(resolvedAbout);
           setAboutDraft(resolvedAbout);
 
-          const remoteImage =
-            me.profileImage ?? me.avatar ?? me.profile_pic ?? storedProfileImage ?? "";
-          if (remoteImage) {
-            setProfileImage(toAbsoluteImageUrl(remoteImage));
-          }
+          const nextCandidates = buildImageCandidates(
+            (me as any).avatar_url,
+            (me as any).profile_image_url,
+            (me as any).profileImageUrl,
+            (me as any).imageUrl,
+            me.profileImage,
+            me.avatar,
+            (me as any).profile_pic,
+            storedProfileImage
+          );
+          setProfileImageCandidates(nextCandidates);
+          setProfileImage(nextCandidates[0] || "");
+          setProfileImageIndex(0);
         }
       } else if (storedProfileAbout) {
         setProfileAbout(storedProfileAbout);
@@ -109,11 +126,36 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
     } catch (error) {
       console.log("Load settings error:", error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSettings();
+    }, [loadSettings])
+  );
 
   const saveLanguage = async (value: LanguageOption) => {
     setLanguage(value);
     await AsyncStorage.setItem(LANGUAGE_KEY, value);
+  };
+
+  useEffect(() => {
+    void setAnalyticsUserProperty("theme", themePreference);
+  }, [themePreference]);
+
+  useEffect(() => {
+    void setAnalyticsUserProperty("has_profile_image", profileImage ? "1" : "0");
+  }, [profileImage]);
+
+  const handleThemeChange = (value: "light" | "dark") => {
+    if (themePreference === value) return;
+    setThemePreference(value);
+    void trackEvent("theme_changed", { theme: value });
+    void setAnalyticsUserProperty("theme", value);
   };
 
   const pickProfileImage = async () => {
@@ -215,8 +257,12 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
       }
 
       const absoluteImageUrl = toAbsoluteImageUrl(returnedUrl);
+      setProfileImageCandidates([absoluteImageUrl]);
       setProfileImage(absoluteImageUrl);
+      setProfileImageIndex(0);
       await AsyncStorage.setItem(PROFILE_IMAGE_KEY, absoluteImageUrl);
+      void trackEvent("profile_image_updated", { source: "settings" });
+      void setAnalyticsUserProperty("has_profile_image", "1");
       Alert.alert("Updated", "Profile image updated successfully.");
     };
 
@@ -348,6 +394,7 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
       setAboutDraft(nextAbout);
       await AsyncStorage.setItem(PROFILE_ABOUT_KEY, nextAbout);
       setIsEditingAbout(false);
+      void trackEvent("about_updated", { about_length: nextAbout.length });
 
       Alert.alert("Success", "About saved successfully.");
     } catch (error: any) {
@@ -366,7 +413,23 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
       <View style={[styles.card, { backgroundColor: colors.card }]}>
         <View style={styles.avatarWrap}>
           {profileImage ? (
-            <Image source={{ uri: profileImage }} style={styles.avatarImage} />
+            <Image
+              source={{ uri: profileImage }}
+              style={styles.avatarImage}
+              onError={(error) => {
+                console.log("Settings profile image render failed:", {
+                  url: profileImage,
+                  error: error?.nativeEvent
+                });
+                const nextIndex = profileImageIndex + 1;
+                if (nextIndex < profileImageCandidates.length) {
+                  setProfileImageIndex(nextIndex);
+                  setProfileImage(profileImageCandidates[nextIndex]);
+                } else {
+                  setProfileImage("");
+                }
+              }}
+            />
           ) : (
             <View style={styles.avatarFallback}>
               <Text style={styles.avatarInitial}>{avatarInitial}</Text>
@@ -461,7 +524,7 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
                   ? [styles.chipActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
                   : null
               ]}
-              onPress={() => setThemePreference(item)}
+              onPress={() => handleThemeChange(item)}
             >
               <Text
                 style={[

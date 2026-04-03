@@ -38,6 +38,7 @@ import { useAppTheme } from "../theme/ThemeContext";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { toAbsoluteImageUrl } from "../utils/image";
 import { AI_FEATURE_DEFAULTS, AI_FEATURE_KEYS } from "../constants/aiFeatures";
+import { trackEvent } from "../services/analytics";
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, "Chat">;
 type ChatScreenNavigationProp = NativeStackNavigationProp<
@@ -462,8 +463,9 @@ const parseChatAttachmentFromMessage = (value?: string) => {
 
   const raw = message.slice(CHAT_ATTACHMENT_PREFIX.length);
   const [urlLine, ...captionLines] = raw.split("\n");
-  const url = (urlLine || "").trim();
-  if (!/^https?:\/\//i.test(url)) return null;
+  const rawUrl = (urlLine || "").trim();
+  const url = toAbsoluteImageUrl(rawUrl) || rawUrl;
+  if (!url) return null;
 
   const caption = captionLines.join("\n").trim();
   return { url, caption };
@@ -550,6 +552,14 @@ const ChatScreen = ({ route, navigation }: Props) => {
     setSelectedChatAttachment(null);
     setText("");
   }, [aiHubAction, receiverId]);
+
+  useEffect(() => {
+    void trackEvent("chat_opened", {
+      receiver_id: receiverId,
+      is_ai_chat: isAIChat,
+      ai_action: isAIChat ? aiHubAction : undefined
+    });
+  }, [receiverId, isAIChat, aiHubAction]);
 
   useEffect(() => {
     if (!isAIChat) return;
@@ -1019,6 +1029,10 @@ const ChatScreen = ({ route, navigation }: Props) => {
     try {
       const pendingText = text;
       if (isAIChat) {
+        void trackEvent("ai_action_used", {
+          action: aiHubAction,
+          mode: selectedAIHubMode || aiHubMode || undefined
+        });
         if (isAnalyzerMode) {
           setIsAnalyzerUploading(true);
           setIsAITyping(true);
@@ -1171,7 +1185,7 @@ const ChatScreen = ({ route, navigation }: Props) => {
         return;
       }
 
-      const attachmentUrl = selectedChatAttachment?.remoteUrl?.trim();
+      const attachmentUrl = toAbsoluteImageUrl(selectedChatAttachment?.remoteUrl?.trim() || "");
       const outgoingMessage = attachmentUrl
         ? `${CHAT_ATTACHMENT_PREFIX}${attachmentUrl}${pendingText.trim() ? `\n${pendingText.trim()}` : ""}`
         : pendingText;
@@ -1194,6 +1208,11 @@ const ChatScreen = ({ route, navigation }: Props) => {
         client_created_at: Date.now()
       } as Message;
       setMessages((prev) => mergeMessages([...prev, newMessage]));
+      void trackEvent("message_sent", {
+        length: pendingText.trim().length,
+        has_attachment: Boolean(attachmentUrl),
+        receiver_id: receiverId
+      });
       setText("");
       setSelectedChatAttachment(null);
       setSuggestedReplies([]);
@@ -1744,7 +1763,7 @@ const ChatScreen = ({ route, navigation }: Props) => {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
       <View style={[styles.chatBody, { backgroundColor: colors.background }]}>
@@ -1987,6 +2006,10 @@ const ChatScreen = ({ route, navigation }: Props) => {
                       { backgroundColor: colors.chipBackground, borderColor: colors.border }
                     ]}
                     onPress={() => {
+                      void trackEvent("suggested_reply_clicked", {
+                        receiver_id: receiverId,
+                        suggestion_index: index + 1
+                      });
                       setText(suggestion);
                     }}
                   >

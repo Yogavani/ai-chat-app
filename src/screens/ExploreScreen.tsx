@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -19,6 +19,7 @@ import { getUsers } from "../services/userService";
 import API from "../services/api";
 import { useAppTheme } from "../theme/ThemeContext";
 import { toAbsoluteImageUrl } from "../utils/image";
+import { trackEvent } from "../services/analytics";
 
 type StatusItem = {
   id: number;
@@ -200,6 +201,13 @@ type StatusView = {
   viewer_avatar?: string;
 };
 
+type StatusViewerListItem = {
+  viewerId: number;
+  viewerName: string;
+  viewerAvatar?: string;
+  viewedAt?: string;
+};
+
 const STATUS_POSTS_ENDPOINTS = ["/status-posts", "/api/status-posts"];
 
 const ExploreScreen = () => {
@@ -223,6 +231,9 @@ const ExploreScreen = () => {
   const [previewError, setPreviewError] = useState("");
   const [creatingStatus, setCreatingStatus] = useState(false);
   const [deletingStatus, setDeletingStatus] = useState(false);
+  const [myStatusViews, setMyStatusViews] = useState<StatusViewerListItem[]>([]);
+  const [isLoadingMyStatusViews, setIsLoadingMyStatusViews] = useState(false);
+  const usersByIdRef = useRef<Map<number, any>>(new Map());
 
   const formatRelativeTime = (rawTime?: string | number) => {
     if (!rawTime) return "No updates yet";
@@ -295,6 +306,7 @@ const ExploreScreen = () => {
       const usersById = new Map<number, any>(
         (Array.isArray(users) ? users : []).map((user: any) => [Number(user.id), user])
       );
+      usersByIdRef.current = usersById;
 
       const me = (Array.isArray(users) ? users : []).find((item: any) => item.id === currentUserId);
       const now = Date.now();
@@ -507,6 +519,10 @@ const ExploreScreen = () => {
         text_content: statusText.trim() || "New status",
         expires_at: getExpiresAt()
       });
+      void trackEvent("status_uploaded", {
+        media_type: pickedMediaKind,
+        has_caption: statusText.trim().length > 0
+      });
 
       setStatusModalVisible(false);
       setStatusText("");
@@ -539,6 +555,71 @@ const ExploreScreen = () => {
 
   const currentMyStatus = myStatusList[myStatusIndex] || myStatus;
 
+  const formatViewTime = (rawTime?: string) => {
+    if (!rawTime) return "";
+    const parsedDate = new Date(rawTime);
+    if (Number.isNaN(parsedDate.getTime())) return "";
+    const dayLabel = parsedDate.toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short"
+    });
+    const timeLabel = parsedDate.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit"
+    });
+    return `${dayLabel}, ${timeLabel}`;
+  };
+
+  const fetchMyStatusViews = useCallback(async (statusId: number) => {
+    try {
+      setIsLoadingMyStatusViews(true);
+      const response = await API.get(`/status-views/${statusId}`);
+      const views: StatusView[] = Array.isArray(response?.data?.views) ? response.data.views : [];
+
+      const normalizedViews = views
+        .filter((entry) => Number(entry.viewer_id) > 0)
+        .map((entry) => {
+          const viewerId = Number(entry.viewer_id);
+          const matchedUser = usersByIdRef.current.get(viewerId);
+          const viewerName = entry.viewer_name || matchedUser?.name || `User ${viewerId}`;
+          const avatar = toAbsoluteImageUrl(
+            entry.viewer_avatar ||
+              matchedUser?.profileImage ||
+              matchedUser?.avatar ||
+              matchedUser?.profile_pic ||
+              ""
+          );
+
+          return {
+            viewerId,
+            viewerName,
+            viewerAvatar: avatar || undefined,
+            viewedAt: entry.viewed_at
+          };
+        })
+        .sort((a, b) => {
+          const aTs = new Date(a.viewedAt || 0).getTime();
+          const bTs = new Date(b.viewedAt || 0).getTime();
+          return bTs - aTs;
+        });
+
+      setMyStatusViews(normalizedViews);
+    } catch (error) {
+      console.log("Fetch my status views error:", error);
+      setMyStatusViews([]);
+    } finally {
+      setIsLoadingMyStatusViews(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!myStatusViewerVisible || !currentMyStatus?.id) {
+      setMyStatusViews([]);
+      return;
+    }
+    void fetchMyStatusViews(currentMyStatus.id);
+  }, [myStatusViewerVisible, currentMyStatus?.id, fetchMyStatusViews]);
+
   const goToNextMyStatus = () => {
     setMyStatusIndex((prev) => Math.min(prev + 1, Math.max(0, myStatusList.length - 1)));
   };
@@ -570,6 +651,10 @@ const ExploreScreen = () => {
   };
 
   const openOtherStatus = (item: StatusItem) => {
+    void trackEvent("status_viewed", {
+      owner_id: item.userId || 0,
+      status_count: item.statusIds?.length || 1
+    });
     AsyncStorage.getItem("userId")
       .then((storedUserId) => {
         const viewerId = storedUserId ? Number(storedUserId) : null;
@@ -848,6 +933,39 @@ const ExploreScreen = () => {
               <Text style={styles.viewerTime}>{currentMyStatus?.time || ""}</Text>
               {!!currentMyStatus?.caption && (
                 <Text style={styles.viewerCaption}>{currentMyStatus.caption}</Text>
+              )}
+            </View>
+            <View style={styles.statusViewsWrap}>
+              <Text style={styles.statusViewsTitle}>
+                Viewed by {myStatusViews.length}
+              </Text>
+              {isLoadingMyStatusViews ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : myStatusViews.length ? (
+                <ScrollView style={styles.statusViewsList} nestedScrollEnabled>
+                  {myStatusViews.map((entry) => (
+                    <View
+                      key={`${currentMyStatus?.id}-${entry.viewerId}-${entry.viewedAt || "0"}`}
+                      style={styles.statusViewRow}
+                    >
+                      {entry.viewerAvatar ? (
+                        <Image source={{ uri: entry.viewerAvatar }} style={styles.statusViewAvatar} />
+                      ) : (
+                        <View style={styles.statusViewAvatarFallback}>
+                          <Text style={styles.statusViewInitial}>
+                            {entry.viewerName.trim().charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.statusViewTextWrap}>
+                        <Text style={styles.statusViewName}>{entry.viewerName}</Text>
+                        <Text style={styles.statusViewTime}>{formatViewTime(entry.viewedAt)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              ) : (
+                <Text style={styles.statusViewsEmptyText}>No views yet</Text>
               )}
             </View>
           </View>
@@ -1203,6 +1321,64 @@ const styles = StyleSheet.create({
   viewerCaption: {
     color: "#fff",
     fontSize: 15
+  },
+  statusViewsWrap: {
+    marginTop: 14,
+    backgroundColor: "rgba(0,0,0,0.28)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  statusViewsTitle: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 8
+  },
+  statusViewsList: {
+    maxHeight: 180
+  },
+  statusViewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8
+  },
+  statusViewAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 10
+  },
+  statusViewAvatarFallback: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.2)"
+  },
+  statusViewInitial: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  statusViewTextWrap: {
+    flex: 1
+  },
+  statusViewName: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "600"
+  },
+  statusViewTime: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 12,
+    marginTop: 1
+  },
+  statusViewsEmptyText: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 12
   },
   viewerNavBtn: {
     position: "absolute",

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Image, StyleSheet, Switch, Text, View } from "react-native";
 import { RouteProp, useFocusEffect } from "@react-navigation/native";
 import { RootStackParamList } from "../navigation/navigation";
@@ -26,9 +26,8 @@ const ProfileScreen = ({ route }: Props) => {
   const [displayName, setDisplayName] = useState(userName);
   const [displayEmail, setDisplayEmail] = useState(userEmail || "");
   const [displayAbout, setDisplayAbout] = useState(about);
-  const [displayProfileImage, setDisplayProfileImage] = useState(
-    toAbsoluteImageUrl(profileImage || "")
-  );
+  const [profileImageCandidates, setProfileImageCandidates] = useState<string[]>([]);
+  const [profileImageIndex, setProfileImageIndex] = useState(0);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState<boolean>(
     AI_FEATURE_DEFAULTS.autoReply
   );
@@ -39,10 +38,27 @@ const ProfileScreen = ({ route }: Props) => {
     AI_FEATURE_DEFAULTS.rewrite
   );
 
+  const buildImageCandidates = (...values: Array<string | null | undefined>) => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    values.forEach((value) => {
+      const absolute = toAbsoluteImageUrl(value || "");
+      if (!absolute || seen.has(absolute)) return;
+      seen.add(absolute);
+      result.push(absolute);
+    });
+
+    return result;
+  };
+
+  const displayProfileImage = profileImageCandidates[profileImageIndex] || "";
+
   useFocusEffect(
     useCallback(() => {
       const refreshProfile = async () => {
         try {
+          const cachedProfileImage = await AsyncStorage.getItem("profileImage");
           const users = await getUsers();
           const matchedUser = users.find((item: any) => item.id === userId);
           if (!matchedUser) return;
@@ -52,15 +68,15 @@ const ProfileScreen = ({ route }: Props) => {
           setDisplayAbout(
             matchedUser.about || matchedUser.bio || about || "Hey there! I am using AIChatApp."
           );
-          setDisplayProfileImage(
-            toAbsoluteImageUrl(
-              matchedUser.profileImage ??
-                matchedUser.avatar ??
-                matchedUser.profile_pic ??
-                profileImage ??
-                ""
-            )
+          const nextCandidates = buildImageCandidates(
+            matchedUser.profileImage,
+            matchedUser.avatar,
+            matchedUser.profile_pic,
+            profileImage,
+            cachedProfileImage
           );
+          setProfileImageCandidates(nextCandidates);
+          setProfileImageIndex(0);
         } catch (error) {
           console.log("Refresh profile error:", error);
         }
@@ -123,6 +139,13 @@ const ProfileScreen = ({ route }: Props) => {
     }, [about, profileImage, userEmail, userId, userName])
   );
 
+  useEffect(() => {
+    if (profileImageCandidates.length === 0 && profileImage) {
+      setProfileImageCandidates(buildImageCandidates(profileImage));
+      setProfileImageIndex(0);
+    }
+  }, [profileImage, profileImageCandidates.length]);
+
   const updateToggleByUser = async (
     key: string,
     value: boolean,
@@ -146,7 +169,17 @@ const ProfileScreen = ({ route }: Props) => {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.profileCard, { backgroundColor: colors.card }]}>
         {displayProfileImage ? (
-          <Image source={{ uri: displayProfileImage }} style={styles.avatarImage} />
+          <Image
+            source={{ uri: displayProfileImage }}
+            style={styles.avatarImage}
+            onError={(error) => {
+              console.log("Profile image render failed:", {
+                url: displayProfileImage,
+                error: error?.nativeEvent
+              });
+              setProfileImageIndex((prev) => prev + 1);
+            }}
+          />
         ) : (
           <View style={[styles.avatarFallback, { backgroundColor: colors.chipBackground }]}>
             <Text style={[styles.avatarInitial, { color: colors.primary }]}>

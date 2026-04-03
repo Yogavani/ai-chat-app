@@ -25,6 +25,16 @@ export const toAbsoluteImageUrl = (value?: string | null): string => {
       ) {
         return `${apiBase.protocol}//${apiBase.host}${incoming.pathname}${incoming.search}${incoming.hash}`;
       }
+
+      // Safety net for old DB records: if API is HTTPS and media points to same host via HTTP,
+      // upgrade to HTTPS so Android release builds can load it.
+      if (
+        incoming.protocol === "http:" &&
+        apiBase.protocol === "https:" &&
+        incoming.hostname === apiBase.hostname
+      ) {
+        return `https://${incoming.host}${incoming.pathname}${incoming.search}${incoming.hash}`;
+      }
       return normalizedValue;
     } catch {
       return normalizedValue;

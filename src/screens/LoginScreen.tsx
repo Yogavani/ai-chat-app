@@ -1,5 +1,16 @@
 import React, { useState } from "react";
-import { View, TextInput, TouchableOpacity, StyleSheet, Text, Image, ActivityIndicator } from "react-native";
+import {
+    View,
+    TextInput,
+    TouchableOpacity,
+    StyleSheet,
+    Text,
+    Image,
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView
+} from "react-native";
 import API from "../services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RootStackParamList } from "../navigation/navigation";
@@ -7,6 +18,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { LoginResponse } from "../services/apiTypes";
 import { useAppTheme } from "../theme/ThemeContext";
 import { Eye, EyeOff } from "lucide-react-native";
+import { trackEvent } from "../services/analytics";
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -44,6 +56,7 @@ const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
                 payload.data?.accessToken;
 
             if (!token) {
+                void trackEvent("login_failed", { reason: "token_missing" });
                 setMessage("Login failed: token missing in response");
                 setIsLoading(false);
                 return;
@@ -59,12 +72,14 @@ const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
             if (typeof userId === "number") {
                 await AsyncStorage.setItem("userId", userId.toString());
             }
+            void trackEvent("login_success", { method: "email_password" });
             onLoginSuccess();
 
         } catch (error :any) {
 
             console.log(error.response?.data || error.message);
 
+            void trackEvent("login_failed", { reason: "api_error" });
             setMessage(error.response?.data?.message || "Login failed");
 
         } finally {
@@ -73,64 +88,73 @@ const LoginScreen = ({ navigation, onLoginSuccess } : Props) => {
     };
 
     return (
-        <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <View style={styles.brandWrap}>
-                <Image source={require("../assests/images/chattr_ai_logo.png")} style={styles.brandIcon} />
-                <Text style={[styles.brandText, { color: colors.text }]}>Chattr</Text>
-            </View>
+        <KeyboardAvoidingView
+            style={[styles.container, { backgroundColor: colors.background }]}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+        >
+            <ScrollView
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+            >
+                <View style={styles.brandWrap}>
+                    <Image source={require("../assests/images/chattr_ai_logo.png")} style={styles.brandIcon} />
+                    <Text style={[styles.brandText, { color: colors.text }]}>Chattr</Text>
+                </View>
 
-            <TextInput
-                placeholder="Email"
-                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.inputBackground, color: colors.text }]}
-                value={email}
-                onChangeText={setEmail}
-                placeholderTextColor={colors.secondaryText}
-            />
-
-            <View style={[styles.passwordInputWrap, { borderColor: colors.border, backgroundColor: colors.inputBackground }]}>
                 <TextInput
-                    placeholder="Password"
-                    style={[styles.passwordInput, { color: colors.text }]}
-                    secureTextEntry={!showPassword}
-                    value={password}
-                    onChangeText={setPassword}
+                    placeholder="Email"
+                    style={[styles.input, { borderColor: colors.border, backgroundColor: colors.inputBackground, color: colors.text }]}
+                    value={email}
+                    onChangeText={setEmail}
                     placeholderTextColor={colors.secondaryText}
                 />
-                <TouchableOpacity
-                    style={styles.eyeButton}
-                    activeOpacity={0.8}
-                    onPress={() => setShowPassword((prev) => !prev)}
-                >
-                    {showPassword ? (
-                        <EyeOff size={18} color={colors.secondaryText} />
-                    ) : (
-                        <Eye size={18} color={colors.secondaryText} />
-                    )}
-                </TouchableOpacity>
-            </View>
 
-            <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-                onPress={handleLogin}
-                activeOpacity={0.9}
-                disabled={isLoading}
-            >
-                <View style={styles.primaryButtonContent}>
-                    <Text style={styles.primaryButtonText}>Login</Text>
-                    {isLoading ? <ActivityIndicator color={LOADER_PURPLE} size="small" style={styles.buttonLoader} /> : null}
+                <View style={[styles.passwordInputWrap, { borderColor: colors.border, backgroundColor: colors.inputBackground }]}>
+                    <TextInput
+                        placeholder="Password"
+                        style={[styles.passwordInput, { color: colors.text }]}
+                        secureTextEntry={!showPassword}
+                        value={password}
+                        onChangeText={setPassword}
+                        placeholderTextColor={colors.secondaryText}
+                    />
+                    <TouchableOpacity
+                        style={styles.eyeButton}
+                        activeOpacity={0.8}
+                        onPress={() => setShowPassword((prev) => !prev)}
+                    >
+                        {showPassword ? (
+                            <EyeOff size={18} color={colors.secondaryText} />
+                        ) : (
+                            <Eye size={18} color={colors.secondaryText} />
+                        )}
+                    </TouchableOpacity>
                 </View>
-            </TouchableOpacity>
 
-            {message ? <Text style={[styles.message, { color: colors.primary }]}>{message}</Text> : null}
+                <TouchableOpacity
+                    style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                    onPress={handleLogin}
+                    activeOpacity={0.9}
+                    disabled={isLoading}
+                >
+                    <View style={styles.primaryButtonContent}>
+                        <Text style={styles.primaryButtonText}>Login</Text>
+                        {isLoading ? <ActivityIndicator color={LOADER_PURPLE} size="small" style={styles.buttonLoader} /> : null}
+                    </View>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-                style={[styles.secondaryButton, { borderColor: colors.border, backgroundColor: colors.inputBackground }]}
-                onPress={() => navigation.navigate("Register")}
-                activeOpacity={0.9}
-            >
-                <Text style={[styles.secondaryButtonText, { color: colors.text }]}>Go to Register</Text>
-            </TouchableOpacity>
-        </View>
+                {message ? <Text style={[styles.message, { color: colors.primary }]}>{message}</Text> : null}
+
+                <TouchableOpacity
+                    style={[styles.secondaryButton, { borderColor: colors.border, backgroundColor: colors.inputBackground }]}
+                    onPress={() => navigation.navigate("Register")}
+                    activeOpacity={0.9}
+                >
+                    <Text style={[styles.secondaryButtonText, { color: colors.text }]}>Go to Register</Text>
+                </TouchableOpacity>
+            </ScrollView>
+        </KeyboardAvoidingView>
     );
 };
 
@@ -139,8 +163,12 @@ export default LoginScreen;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        paddingHorizontal: 20
+    },
+    scrollContent: {
+        flexGrow: 1,
         justifyContent: "center",
-        padding: 20
+        paddingVertical: 20
     },
     brandWrap: {
         alignItems: "center",

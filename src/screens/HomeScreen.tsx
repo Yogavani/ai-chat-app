@@ -7,6 +7,7 @@ import API from "../services/api";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAppTheme } from "../theme/ThemeContext";
 import { toAbsoluteImageUrl } from "../utils/image";
+import { trackEvent } from "../services/analytics";
 
 type Props = {
   navigation: any;
@@ -136,14 +137,18 @@ const HomeScreen = ({ navigation }: Props) => {
       );
 
       const usersWithConversationOnly = (usersWithLastMessage as ChatListUser[]).filter((item) =>
-        Boolean(item.hasConversation) && !isChattrAi(item)
+        Boolean(item.hasConversation)
       );
 
       const sortedConversationUsers = [...usersWithConversationOnly].sort(
         (a, b) => getMessageTimestamp(b.lastMessageAt) - getMessageTimestamp(a.lastMessageAt)
       );
       const chattrAiUser = (usersWithLastMessage as ChatListUser[]).find((item) => isChattrAi(item));
-      const sortedUsers = chattrAiUser ? [chattrAiUser, ...sortedConversationUsers] : sortedConversationUsers;
+      const hasAiConversation = sortedConversationUsers.some((item) => isChattrAi(item));
+      const sortedUsers =
+        !hasAiConversation && chattrAiUser
+          ? [...sortedConversationUsers, chattrAiUser]
+          : sortedConversationUsers;
       const hasNonAiConversation = sortedConversationUsers.length > 0;
 
       setUsers(sortedUsers);
@@ -185,7 +190,9 @@ const HomeScreen = ({ navigation }: Props) => {
                 }
               >
                 {item.id === 9999999 || item.name?.trim().toLowerCase() === "chattr ai" ? (
-                  <Image source={require("../assests/images/chattr_ai_logo.png")} style={styles.avatarImage} />
+                  <View style={[styles.aiAvatarShell, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Image source={require("../assests/images/chattr_ai_logo.png")} style={styles.aiAvatarLogo} />
+                  </View>
                 ) : item.profileImage && !failedImageUserIds.includes(item.id) ? (
                   <Image
                     source={{ uri: item.profileImage }}
@@ -206,13 +213,17 @@ const HomeScreen = ({ navigation }: Props) => {
               <TouchableOpacity
                 style={styles.textContent}
                 activeOpacity={0.8}
-                onPress={() =>
+                onPress={() => {
+                  void trackEvent("chat_opened", {
+                    source: "home_list",
+                    receiver_id: item.id
+                  });
                   navigation.navigate("Chat", {
                     receiverId: item.id,
                     receiverName: item.name,
                     receiverProfileImage: item.profileImage
-                  })
-                }
+                  });
+                }}
               >
                 <View style={styles.topLine}>
                   <Text style={[styles.userName, { color: colors.text }]}>{item.name}</Text>
@@ -242,7 +253,10 @@ const HomeScreen = ({ navigation }: Props) => {
               {showStartConversation ? (
                 <TouchableOpacity
                   activeOpacity={0.9}
-                  onPress={() => setIsContactsOpen(true)}
+                  onPress={() => {
+                    void trackEvent("start_conversation_clicked", { source: "home_empty_state" });
+                    setIsContactsOpen(true);
+                  }}
                   style={[styles.startConversationButton, { backgroundColor: colors.primary }]}
                 >
                   <Text style={styles.startConversationText}>Start Conversation</Text>
@@ -255,7 +269,10 @@ const HomeScreen = ({ navigation }: Props) => {
 
       <TouchableOpacity
         activeOpacity={0.9}
-        onPress={() => setIsContactsOpen(true)}
+        onPress={() => {
+          void trackEvent("new_chat_clicked", { source: "home_fab" });
+          setIsContactsOpen(true);
+        }}
         style={[styles.fabButton, { backgroundColor: colors.primary }]}
       >
         <Text style={styles.fabPlusText}>+</Text>
@@ -281,6 +298,10 @@ const HomeScreen = ({ navigation }: Props) => {
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={() => {
+                    void trackEvent("contact_selected", {
+                      source: "home_contacts_modal",
+                      receiver_id: item.id
+                    });
                     setIsContactsOpen(false);
                     navigation.navigate("Chat", {
                       receiverId: item.id,
@@ -291,7 +312,9 @@ const HomeScreen = ({ navigation }: Props) => {
                   style={[styles.contactRow, { borderBottomColor: colors.border }]}
                 >
                   {item.id === 9999999 || item.name?.trim().toLowerCase() === "chattr ai" ? (
-                    <Image source={require("../assests/images/chattr_ai_logo.png")} style={styles.contactAvatar} />
+                    <View style={[styles.aiAvatarShell, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Image source={require("../assests/images/chattr_ai_logo.png")} style={styles.aiAvatarLogo} />
+                    </View>
                   ) : item.profileImage && !failedImageUserIds.includes(item.id) ? (
                     <Image
                       source={{ uri: item.profileImage }}
@@ -346,6 +369,21 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 23,
     marginRight: 12
+  },
+  aiAvatarShell: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    marginRight: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden"
+  },
+  aiAvatarLogo: {
+    width: 36,
+    height: 36,
+    borderRadius: 18
   },
   avatarFallback: {
     width: 46,

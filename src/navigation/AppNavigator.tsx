@@ -1,5 +1,6 @@
 import React from "react";
 import { DarkTheme, DefaultTheme, NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
+import notifee, { EventType } from "@notifee/react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -24,6 +25,7 @@ import API from "../services/api";
 import { getUsers } from "../services/userService";
 import { toAbsoluteImageUrl } from "../utils/image";
 import { subscribeFcmTokenRefresh, syncFcmTokenForUser } from "../services/pushNotifications";
+import { setAnalyticsUserId, trackEvent } from "../services/analytics";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -85,6 +87,7 @@ const AppNavigator = () => {
     const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastIncomingBySenderRef = useRef<Map<number, number>>(new Map());
     const senderProfileByIdRef = useRef<Map<number, string>>(new Map());
+    const lastTrackedRouteRef = useRef<string>("");
     const navigationRef = useNavigationContainerRef<RootStackParamList>();
     const { resolvedTheme, colors } = useAppTheme();
 
@@ -104,6 +107,14 @@ const AppNavigator = () => {
     useEffect(() => {
         void checkLogin();
     }, []);
+
+    useEffect(() => {
+        void trackEvent("app_open");
+    }, []);
+
+    useEffect(() => {
+        void setAnalyticsUserId(currentUserId);
+    }, [currentUserId]);
 
     useEffect(() => {
         if (!isLoggedIn || !currentUserId) return;
@@ -138,6 +149,11 @@ const AppNavigator = () => {
 
             if (!receiverId || !senderId) return;
             if (receiverId !== currentUserId) return;
+            void trackEvent("message_received", {
+                source: "socket",
+                sender_id: senderId,
+                has_text: String(payload?.message || "").trim().length > 0
+            });
             if (senderId === 9999999) return;
             if (activeChatUserId === senderId) return;
 
@@ -146,6 +162,10 @@ const AppNavigator = () => {
                 payload?.sender_profile_image ?? payload?.senderProfileImage ?? payload?.profileImage ?? ""
             );
             const knownProfileImage = senderProfileByIdRef.current.get(senderId) || "";
+            void trackEvent("notification_received", {
+                source: "in_app_banner",
+                sender_id: senderId
+            });
             setNotificationBanner({
                 senderId,
                 title: String(payload?.sender_name || payload?.senderName || "New message"),
@@ -223,9 +243,18 @@ const AppNavigator = () => {
 
                         if (previousId === undefined) return;
                         if (latestId <= previousId) return;
+                        void trackEvent("message_received", {
+                            source: "polling",
+                            sender_id: userId,
+                            has_text: String(latestIncoming?.message || "").trim().length > 0
+                        });
                         if (activeChatUserId === userId) return;
                         if (!isMounted) return;
 
+                        void trackEvent("notification_received", {
+                            source: "in_app_banner_polling",
+                            sender_id: userId
+                        });
                         setNotificationBanner({
                             senderId: userId,
                             title: String(user?.name || "New message"),
@@ -269,6 +298,19 @@ const AppNavigator = () => {
         };
     }, [notificationBanner]);
 
+    useEffect(() => {
+        const unsubscribe = notifee.onForegroundEvent(({ type, detail }) => {
+            if (type !== EventType.PRESS && type !== EventType.ACTION_PRESS) return;
+            const senderId = Number(detail.notification?.data?.senderId || 0);
+            void trackEvent("notification_opened", {
+                source: "foreground_push",
+                sender_id: senderId > 0 ? senderId : undefined
+            });
+        });
+
+        return unsubscribe;
+    }, []);
+
     if (isLoggedIn === null) {
         return null;
     }
@@ -283,6 +325,11 @@ const AppNavigator = () => {
                     setActiveChatUserId(Number.isNaN(receiverId) ? null : receiverId);
                 } else {
                     setActiveChatUserId(null);
+                }
+
+                if (route?.name && lastTrackedRouteRef.current !== route.name) {
+                    lastTrackedRouteRef.current = route.name;
+                    void trackEvent("screen_viewed", { screen_name: route.name });
                 }
             }}
             theme={{
@@ -351,6 +398,10 @@ const AppNavigator = () => {
                 <TouchableOpacity
                     activeOpacity={0.9}
                     onPress={() => {
+                        void trackEvent("notification_opened", {
+                            source: "in_app_banner",
+                            sender_id: notificationBanner.senderId
+                        });
                         setNotificationBanner(null);
                         navigationRef.navigate("Chat", {
                             receiverId: notificationBanner.senderId,
