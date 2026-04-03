@@ -132,18 +132,41 @@ const HomeScreen = ({ navigation }: Props) => {
         })
       );
 
-      const contacts = [...(usersWithLastMessage as ChatListUser[])].sort((a, b) =>
+      const dedupedUsers = (usersWithLastMessage as ChatListUser[]).reduce<ChatListUser[]>(
+        (acc, current) => {
+          if (!isChattrAi(current)) {
+            const alreadyExists = acc.some((item) => item.id === current.id);
+            if (!alreadyExists) acc.push(current);
+            return acc;
+          }
+
+          const aiIndex = acc.findIndex((item) => isChattrAi(item));
+          if (aiIndex === -1) {
+            acc.push(current);
+            return acc;
+          }
+
+          // Prefer canonical AI record with id=9999999 when duplicates exist.
+          if (current.id === 9999999 && acc[aiIndex].id !== 9999999) {
+            acc[aiIndex] = current;
+          }
+          return acc;
+        },
+        []
+      );
+
+      const contacts = [...dedupedUsers].sort((a, b) =>
         (a.name || "").localeCompare(b.name || "")
       );
 
-      const usersWithConversationOnly = (usersWithLastMessage as ChatListUser[]).filter((item) =>
+      const usersWithConversationOnly = dedupedUsers.filter((item) =>
         Boolean(item.hasConversation)
       );
 
       const sortedConversationUsers = [...usersWithConversationOnly].sort(
         (a, b) => getMessageTimestamp(b.lastMessageAt) - getMessageTimestamp(a.lastMessageAt)
       );
-      const chattrAiUser = (usersWithLastMessage as ChatListUser[]).find((item) => isChattrAi(item));
+      const chattrAiUser = dedupedUsers.find((item) => isChattrAi(item));
       const hasAiConversation = sortedConversationUsers.some((item) => isChattrAi(item));
       const sortedUsers =
         !hasAiConversation && chattrAiUser

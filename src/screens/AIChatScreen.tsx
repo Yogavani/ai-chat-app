@@ -234,7 +234,9 @@ const AIChatScreen = () => {
             ) : null}
             <View style={styles.actionHeader}>
               <item.icon color={colors.primary} size={16} strokeWidth={2.2} />
-              <Text style={[styles.actionText, { color: colors.text }]}>{item.label}</Text>
+              <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
+                {item.label}
+              </Text>
             </View>
             <Text style={[styles.actionCaption, { color: colors.secondaryText }]}>
               {item.caption}
@@ -304,11 +306,14 @@ const styles = StyleSheet.create({
   },
   actionHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 8
   },
   actionText: {
-    fontSize: 15,
+    flex: 1,
+    flexShrink: 1,
+    fontSize: 13.5,
+    lineHeight: 18,
     fontWeight: "700"
   },
   actionCaption: {

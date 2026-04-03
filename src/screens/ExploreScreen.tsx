@@ -763,9 +763,11 @@ const ExploreScreen = () => {
             />
           ))
         ) : (
-          <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
-            No recent status updates
-          </Text>
+          <View style={[styles.emptyStateCard, { borderColor: colors.border }]}>
+            <Text style={[styles.emptyStateTitle, { color: colors.secondaryText }]}>
+              No recent status updates
+            </Text>
+          </View>
         )}
       </View>
 
@@ -783,9 +785,11 @@ const ExploreScreen = () => {
             />
           ))
         ) : (
-          <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
-            No viewed updates yet
-          </Text>
+          <View style={[styles.emptyStateCard, { borderColor: colors.border }]}>
+            <Text style={[styles.emptyStateTitle, { color: colors.secondaryText }]}>
+              No viewed updates yet
+            </Text>
+          </View>
         )}
       </View>
     </ScrollView>
@@ -1082,10 +1086,20 @@ const styles = StyleSheet.create({
   sectionSpacing: {
     marginTop: 6
   },
-  emptyText: {
+  emptyStateCard: {
+    marginHorizontal: 12,
+    marginVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  emptyStateTitle: {
     fontSize: 13,
-    paddingHorizontal: 14,
-    paddingBottom: 10
+    fontWeight: "600",
+    textAlign: "center"
   },
   row: {
     flexDirection: "row",

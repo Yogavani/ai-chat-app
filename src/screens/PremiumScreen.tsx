@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
@@ -63,23 +63,36 @@ const PremiumScreen = () => {
       setPaymentTxnId(txnId);
       const query = createUpiQuery(txnId);
       const genericUrl = `upi://pay?${query}`;
-      const appUrl =
+      const gpayIntentUrl = `intent://upi/pay?${query}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
+      const phonepeIntentUrl = `intent://upi/pay?${query}#Intent;scheme=upi;package=com.phonepe.app;end`;
+      const urlsToTry =
         app === "gpay"
-          ? `tez://upi/pay?${query}`
+          ? Platform.OS === "android"
+            ? [gpayIntentUrl, `tez://upi/pay?${query}`, genericUrl]
+            : [genericUrl]
           : app === "phonepe"
-          ? `phonepe://pay?${query}`
-          : genericUrl;
+          ? Platform.OS === "android"
+            ? [phonepeIntentUrl, `phonepe://pay?${query}`, genericUrl]
+            : [genericUrl]
+          : [genericUrl];
 
-      const supported = await Linking.canOpenURL(appUrl);
-      if (supported) {
-        await Linking.openURL(appUrl);
-      } else {
-        const fallbackSupported = await Linking.canOpenURL(genericUrl);
-        if (!fallbackSupported) {
-          Alert.alert("UPI App Not Found", "Please install GPay, PhonePe, or another UPI app.");
-          return;
+      let opened = false;
+      for (const nextUrl of urlsToTry) {
+        try {
+          await Linking.openURL(nextUrl);
+          opened = true;
+          break;
+        } catch {
+          // try next fallback
         }
-        await Linking.openURL(genericUrl);
+      }
+
+      if (!opened) {
+        Alert.alert(
+          "UPI App Not Found",
+          "Please install Google Pay, PhonePe, or another UPI app."
+        );
+        return;
       }
 
       Alert.alert(

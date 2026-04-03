@@ -516,6 +516,7 @@ const ChatScreen = ({ route, navigation }: Props) => {
   const [isAnalyzerUploading, setIsAnalyzerUploading] = useState(false);
   const [selectedChatAttachment, setSelectedChatAttachment] = useState<ChatAttachment | null>(null);
   const [isChatAttachmentUploading, setIsChatAttachmentUploading] = useState(false);
+  const [hasNavAvatarLoadFailed, setHasNavAvatarLoadFailed] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const shouldAutoScrollRef = useRef(true);
   const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -552,6 +553,10 @@ const ChatScreen = ({ route, navigation }: Props) => {
     setSelectedChatAttachment(null);
     setText("");
   }, [aiHubAction, receiverId]);
+
+  useEffect(() => {
+    setHasNavAvatarLoadFailed(false);
+  }, [receiverId, receiverProfileImage]);
 
   useEffect(() => {
     void trackEvent("chat_opened", {
@@ -649,14 +654,24 @@ const ChatScreen = ({ route, navigation }: Props) => {
       ? "online"
       : "offline";
 
-    const profileImage = toAbsoluteImageUrl(receiverProfileImage || "");
+    const rawProfileImage = String(receiverProfileImage || "").trim();
+    const hasExplicitlyInvalidImageValue =
+      rawProfileImage.length === 0 ||
+      rawProfileImage.toLowerCase() === "null" ||
+      rawProfileImage.toLowerCase() === "undefined";
+    const profileImage = hasExplicitlyInvalidImageValue ? "" : toAbsoluteImageUrl(rawProfileImage);
+    const shouldShowNavAvatarImage = Boolean(profileImage) && !hasNavAvatarLoadFailed;
 
     navigation.setOptions({
       headerTitleAlign: "left",
       headerTitle: () => (
         <View style={styles.navHeaderContent}>
-          {profileImage ? (
-            <Image source={{ uri: profileImage }} style={styles.navAvatar} />
+          {shouldShowNavAvatarImage ? (
+            <Image
+              source={{ uri: profileImage }}
+              style={styles.navAvatar}
+              onError={() => setHasNavAvatarLoadFailed(true)}
+            />
           ) : (
             <View
               style={[
@@ -702,6 +717,7 @@ const ChatScreen = ({ route, navigation }: Props) => {
     playingAudioMessageId,
     isReceiverTyping,
     isReceiverOnline,
+    hasNavAvatarLoadFailed,
     colors.text,
     colors.secondaryText,
     colors.primary,
@@ -1763,7 +1779,7 @@ const ChatScreen = ({ route, navigation }: Props) => {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
       <View style={[styles.chatBody, { backgroundColor: colors.background }]}>
@@ -1819,6 +1835,7 @@ const ChatScreen = ({ route, navigation }: Props) => {
             shouldAutoScrollRef.current = distanceFromBottom < 80;
           }}
           scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => {
             const parsedAttachment = parseChatAttachmentFromMessage(item.message);
             const attachmentUrl = parsedAttachment?.url || "";
