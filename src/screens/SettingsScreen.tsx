@@ -20,7 +20,11 @@ import API from "../services/api";
 import { launchImageLibrary } from "react-native-image-picker";
 import { useAppTheme } from "../theme/ThemeContext";
 import { toAbsoluteImageUrl } from "../utils/image";
-import { setAnalyticsUserProperty, trackEvent } from "../services/analytics";
+import {
+  setAnalyticsUserProperty,
+  trackEvent,
+  trackThemeChanged
+} from "../services/analytics";
 
 type LanguageOption = "English" | "Hindi" | "Tamil";
 
@@ -155,6 +159,7 @@ const SettingsScreen = ({ onLogoutSuccess }: Props) => {
     if (themePreference === value) return;
     setThemePreference(value);
     void trackEvent("theme_changed", { theme: value });
+    void trackThemeChanged(value);
     void setAnalyticsUserProperty("theme", value);
   };
 

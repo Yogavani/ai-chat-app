@@ -5,7 +5,16 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useRef, useState } from "react";
-import { StatusBar, StyleSheet, Text, TouchableOpacity, View, Image } from "react-native";
+import {
+    AppState,
+    AppStateStatus,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+    Image
+} from "react-native";
 import { Bot, Compass, House, Settings as SettingsIcon } from "lucide-react-native";
 
 
@@ -25,7 +34,13 @@ import API from "../services/api";
 import { getUsers } from "../services/userService";
 import { toAbsoluteImageUrl } from "../utils/image";
 import { subscribeFcmTokenRefresh, syncFcmTokenForUser } from "../services/pushNotifications";
-import { setAnalyticsUserId, trackEvent } from "../services/analytics";
+import {
+    setAnalyticsUserId,
+    trackAppSession,
+    trackEvent,
+    trackNotificationOpened,
+    trackPageTime
+} from "../services/analytics";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -78,6 +93,7 @@ const AppNavigator = () => {
     const [activeChatUserId, setActiveChatUserId] = useState<number | null>(null);
     const [notificationBanner, setNotificationBanner] = useState<{
         senderId: number;
+        notificationId?: string;
         title: string;
         preview: string;
         profileImage?: string;
@@ -88,8 +104,22 @@ const AppNavigator = () => {
     const lastIncomingBySenderRef = useRef<Map<number, number>>(new Map());
     const senderProfileByIdRef = useRef<Map<number, string>>(new Map());
     const lastTrackedRouteRef = useRef<string>("");
+    const routeOpenedAtRef = useRef<number | null>(null);
+    const appSessionStartedAtRef = useRef<number | null>(null);
+    const appStateRef = useRef<AppStateStatus>(AppState.currentState);
     const navigationRef = useNavigationContainerRef<RootStackParamList>();
     const { resolvedTheme, colors } = useAppTheme();
+
+    const flushCurrentRouteTime = () => {
+        const previousRoute = lastTrackedRouteRef.current;
+        const openedAt = routeOpenedAtRef.current;
+        if (!previousRoute || !openedAt) return;
+
+        const durationSeconds = (Date.now() - openedAt) / 1000;
+        if (durationSeconds >= 1) {
+            void trackPageTime(previousRoute, durationSeconds);
+        }
+    };
 
     const checkLogin = async () => {
         const token = await AsyncStorage.getItem("token");
@@ -115,6 +145,69 @@ const AppNavigator = () => {
     useEffect(() => {
         void setAnalyticsUserId(currentUserId);
     }, [currentUserId]);
+
+    useEffect(() => {
+        if (!isLoggedIn || !currentUserId) {
+            flushCurrentRouteTime();
+            routeOpenedAtRef.current = null;
+            lastTrackedRouteRef.current = "";
+            if (appSessionStartedAtRef.current) {
+                const durationSeconds = (Date.now() - appSessionStartedAtRef.current) / 1000;
+                void trackAppSession("end", durationSeconds);
+                appSessionStartedAtRef.current = null;
+            }
+            return;
+        }
+
+        appSessionStartedAtRef.current = Date.now();
+        void trackAppSession("start");
+    }, [isLoggedIn, currentUserId]);
+
+    useEffect(() => {
+        const subscription = AppState.addEventListener("change", (nextState) => {
+            const prevState = appStateRef.current;
+            appStateRef.current = nextState;
+
+            if (!isLoggedIn || !currentUserId) return;
+
+            if (
+                prevState === "active" &&
+                (nextState === "background" || nextState === "inactive")
+            ) {
+                flushCurrentRouteTime();
+                if (appSessionStartedAtRef.current) {
+                    const durationSeconds = (Date.now() - appSessionStartedAtRef.current) / 1000;
+                    void trackAppSession("end", durationSeconds);
+                    appSessionStartedAtRef.current = null;
+                }
+                return;
+            }
+
+            if (
+                (prevState === "background" || prevState === "inactive") &&
+                nextState === "active"
+            ) {
+                routeOpenedAtRef.current = Date.now();
+                appSessionStartedAtRef.current = Date.now();
+                void trackAppSession("start");
+            }
+        });
+
+        return () => {
+            subscription.remove();
+        };
+    }, [isLoggedIn, currentUserId]);
+
+    useEffect(() => {
+        return () => {
+            flushCurrentRouteTime();
+            if (appSessionStartedAtRef.current) {
+                const durationSeconds = (Date.now() - appSessionStartedAtRef.current) / 1000;
+                void trackAppSession("end", durationSeconds);
+                appSessionStartedAtRef.current = null;
+            }
+        };
+    }, []);
 
     useEffect(() => {
         if (!isLoggedIn || !currentUserId) return;
@@ -168,6 +261,7 @@ const AppNavigator = () => {
             });
             setNotificationBanner({
                 senderId,
+                notificationId: String(payload?.id ?? "").trim() || undefined,
                 title: String(payload?.sender_name || payload?.senderName || "New message"),
                 preview: textPreview || "You have a new message",
                 profileImage: payloadProfileImage || knownProfileImage || undefined,
@@ -257,6 +351,7 @@ const AppNavigator = () => {
                         });
                         setNotificationBanner({
                             senderId: userId,
+                            notificationId: String(latestIncoming?.id ?? "").trim() || undefined,
                             title: String(user?.name || "New message"),
                             preview: String(latestIncoming?.message || "You have a new message"),
                             profileImage: toAbsoluteImageUrl(
@@ -302,10 +397,17 @@ const AppNavigator = () => {
         const unsubscribe = notifee.onForegroundEvent(({ type, detail }) => {
             if (type !== EventType.PRESS && type !== EventType.ACTION_PRESS) return;
             const senderId = Number(detail.notification?.data?.senderId || 0);
+            const notificationId =
+                String(
+                    detail.notification?.data?.notificationId ??
+                        detail.notification?.id ??
+                        ""
+                ).trim() || undefined;
             void trackEvent("notification_opened", {
                 source: "foreground_push",
                 sender_id: senderId > 0 ? senderId : undefined
             });
+            void trackNotificationOpened(notificationId);
         });
 
         return unsubscribe;
@@ -318,6 +420,13 @@ const AppNavigator = () => {
     return (
         <NavigationContainer
             ref={navigationRef}
+            onReady={() => {
+                const initialRoute = navigationRef.getCurrentRoute();
+                if (initialRoute?.name) {
+                    lastTrackedRouteRef.current = initialRoute.name;
+                    routeOpenedAtRef.current = Date.now();
+                }
+            }}
             onStateChange={() => {
                 const route = navigationRef.getCurrentRoute();
                 if (route?.name === "Chat") {
@@ -328,7 +437,9 @@ const AppNavigator = () => {
                 }
 
                 if (route?.name && lastTrackedRouteRef.current !== route.name) {
+                    flushCurrentRouteTime();
                     lastTrackedRouteRef.current = route.name;
+                    routeOpenedAtRef.current = Date.now();
                     void trackEvent("screen_viewed", { screen_name: route.name });
                 }
             }}
@@ -402,6 +513,7 @@ const AppNavigator = () => {
                             source: "in_app_banner",
                             sender_id: notificationBanner.senderId
                         });
+                        void trackNotificationOpened(notificationBanner.notificationId);
                         setNotificationBanner(null);
                         navigationRef.navigate("Chat", {
                             receiverId: notificationBanner.senderId,

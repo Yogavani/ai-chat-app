@@ -1,97 +1,165 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# Chattr (React Native)
 
-# Getting Started
+Chattr is an Android-first chat application built with React Native.
+It includes real-time messaging, AI tools, status updates, push notifications, and premium voice features.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+## Features
 
-## Step 1: Start Metro
+- Real-time one-to-one chat
+- Persistent **Chattr AI** chat contact
+- AI Toolkit:
+  - Ask AI
+  - Generate Image
+  - Text to Speech
+  - Speech to Text
+  - Voice Agent (Premium)
+  - Document Analyzer
+  - Image Understanding
+  - Rewrite
+  - Generate Replies
+  - Summarize Chat
+- WhatsApp-style status flow:
+  - Upload status media
+  - View recent/viewed status
+  - Status viewers list with view time
+- In-app and background message notifications (Android)
+- Firebase Analytics event tracking
+- Username/email duplicate checks on register
+- Profile and settings management (image, about, theme)
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+## Tech Stack
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+- React Native
+- TypeScript
+- React Navigation
+- Socket.io client
+- Firebase Cloud Messaging + Notifee (Android notifications)
+- React Native Firebase Analytics
 
-```sh
-# Using npm
+## Project Structure
+
+- `src/screens` - app screens (Home, Chat, AI Toolkit, Status, Settings, Premium)
+- `src/services` - API, sockets, analytics, notifications, user services
+- `src/navigation` - stack/tab navigation
+- `src/utils` - shared helpers (media/image URL normalization)
+- `android/` - native Android config (FCM, app resources)
+
+## Prerequisites
+
+- Node.js LTS
+- JDK (compatible with your RN/Gradle setup)
+- Android Studio + Android SDK
+- A running backend API
+- Firebase project configured for Android (`google-services.json`)
+
+## Setup
+
+1. Install dependencies
+
+```bash
+npm install
+```
+
+2. Add Firebase Android config
+
+- Place `google-services.json` in:
+
+```text
+android/app/google-services.json
+```
+
+3. Configure API base URL
+
+- Update API/base URL in `src/services/api.ts` to your backend URL.
+
+4. Start Metro
+
+```bash
 npm start
-
-# OR using Yarn
-yarn start
 ```
 
-## Step 2: Build and run your app
+5. Run Android app
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
-
-```sh
-# Using npm
+```bash
 npm run android
-
-# OR using Yarn
-yarn android
 ```
 
-### iOS
+## Release Build (Android)
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
+```bash
+cd android
+./gradlew assembleRelease
 ```
 
-Then, and every time you update your native dependencies, run:
+Generated APK path (typical):
 
-```sh
-bundle exec pod install
+```text
+android/app/build/outputs/apk/release/app-release.apk
 ```
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+## Notifications (Android)
 
-```sh
-# Using npm
-npm run ios
+- FCM token is synced from frontend to backend.
+- Backend should send FCM data containing sender name/message/profile fields.
+- Notifee renders WhatsApp-style messaging notifications.
 
-# OR using Yarn
-yarn ios
+## Analytics
+
+Analytics events are logged through `src/services/analytics.ts`.
+
+Examples already tracked:
+
+- `app_open`
+- `screen_viewed`
+- `chat_opened`
+- `message_sent`
+- `message_received`
+- `notification_received`
+- `notification_opened`
+- `status_uploaded`
+- `status_viewed`
+- `profile_image_updated`
+- `about_updated`
+- `theme_changed`
+
+User properties tracked:
+
+- `theme`
+- `has_profile_image`
+
+### Debug Analytics on Android Emulator/Device
+
+```bash
+adb -s <DEVICE_ID> shell setprop debug.firebase.analytics.app com.aichatapp
+adb -s <DEVICE_ID> shell am force-stop com.aichatapp
+adb -s <DEVICE_ID> shell monkey -p com.aichatapp -c android.intent.category.LAUNCHER 1
+adb -s <DEVICE_ID> logcat -v time -s ReactNativeJS FA FA-SVC
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+Disable debug mode:
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+```bash
+adb -s <DEVICE_ID> shell setprop debug.firebase.analytics.app .none.
+```
 
-## Step 3: Modify your app
+## Premium (UPI)
 
-Now that you have successfully run the app, let's make changes!
+Premium screen supports UPI payment app handoff (Google Pay / PhonePe / Any UPI app) and then manual unlock confirmation in-app.
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+## Notes
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+- This app is currently focused on **Android**.
+- For backend deployment, ensure media URLs are served over HTTPS for best Android release compatibility.
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+## Scripts
 
-## Congratulations! :tada:
+```bash
+npm start
+npm run android
+npm run lint
+npm run test
+```
 
-You've successfully run and modified your React Native App. :partying_face:
+## License
 
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+This project is for learning/demo/interview use unless otherwise specified.

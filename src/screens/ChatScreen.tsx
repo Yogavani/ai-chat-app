@@ -13,7 +13,9 @@ import {
   ScrollView,
   Share,
   PermissionsAndroid,
-  Linking
+  Linking,
+  Keyboard,
+  Dimensions
 } from "react-native";
 import { FileText, Paperclip, X } from "lucide-react-native";
 import Video from "react-native-video";
@@ -178,79 +180,87 @@ const buildAIConversationContext = (chatMessages: Message[], currentUserId: numb
 const buildAIHubRequest = (
   action: AIHubAction,
   userText: string,
-  mode?: string
+  mode?: string,
+  userId?: number | null
 ): { endpoint: string; body: Record<string, any> } => {
+  const withUserId = (payload: Record<string, any>) => ({
+    ...payload,
+    ...(userId && Number.isFinite(userId)
+      ? { user_id: userId, userId: userId }
+      : {})
+  });
+
   switch (action) {
     case "voiceAgent":
       return {
         endpoint: "/ai/voice-agent",
-        body: {}
+        body: withUserId({})
       };
     case "documentAnalyzer":
       return {
         endpoint: "/ai/ask",
-        body: {
+        body: withUserId({
           prompt: `You are a document analyzer. Analyze this content clearly:\n\n${userText}`,
           mode: mode || "professional"
-        }
+        })
       };
     case "imageUnderstanding":
       return {
         endpoint: "/ai/ask",
-        body: {
+        body: withUserId({
           prompt: `You are an image understanding assistant. Help with this image/context request:\n\n${userText}`,
           mode: mode || "friendly"
-        }
+        })
       };
     case "speechToText":
       return {
         endpoint: `/ai/speech-to-text?model=${DEFAULT_STT_MODEL}`,
-        body: {}
+        body: withUserId({})
       };
     case "textToSpeech":
       return {
         endpoint: "/ai/text-to-speech",
-        body: {
+        body: withUserId({
           text: userText,
           voice: DEFAULT_TTS_VOICE
-        }
+        })
       };
     case "generateImage":
       return {
         endpoint: "/ai/generate-image",
-        body: {
+        body: withUserId({
           prompt: userText,
           negative_prompt: "blurry, low quality",
           width: 1024,
           height: 1024,
           steps: 4
-        }
+        })
       };
     case "rewrite":
       return {
         endpoint: "/ai/rewrite",
-        body: { message: userText, mode: mode || "professional" }
+        body: withUserId({ message: userText, mode: mode || "professional" })
       };
     case "generateReplies":
       return {
         endpoint: "/ai/generate-replies",
-        body: { message: userText, mode: mode || "friendly" }
+        body: withUserId({ message: userText, mode: mode || "friendly" })
       };
     case "summarizeChat":
       return {
         endpoint: "/ai/summarize-chat",
-        body: { chatText: userText, mode: mode || "professional" }
+        body: withUserId({ chatText: userText, mode: mode || "professional" })
       };
     case "modes":
       return {
         endpoint: "/ai/ask",
-        body: { prompt: userText, mode: mode || "friendly" }
+        body: withUserId({ prompt: userText, mode: mode || "friendly" })
       };
     case "ask":
     default:
       return {
         endpoint: "/ai/ask",
-        body: { prompt: userText, mode: mode || "funny" }
+        body: withUserId({ prompt: userText, mode: mode || "funny" })
       };
   }
 };
@@ -517,6 +527,8 @@ const ChatScreen = ({ route, navigation }: Props) => {
   const [selectedChatAttachment, setSelectedChatAttachment] = useState<ChatAttachment | null>(null);
   const [isChatAttachmentUploading, setIsChatAttachmentUploading] = useState(false);
   const [hasNavAvatarLoadFailed, setHasNavAvatarLoadFailed] = useState(false);
+  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
+  const baseWindowHeightRef = useRef(Dimensions.get("window").height);
   const flatListRef = useRef<FlatList>(null);
   const shouldAutoScrollRef = useRef(true);
   const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -557,6 +569,33 @@ const ChatScreen = ({ route, navigation }: Props) => {
   useEffect(() => {
     setHasNavAvatarLoadFailed(false);
   }, [receiverId, receiverProfileImage]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+
+    const updateInset = (event: any) => {
+      const windowHeight = Dimensions.get("window").height;
+      const screenHeight = Dimensions.get("screen").height;
+      const keyboardY = event?.endCoordinates?.screenY ?? screenHeight;
+      const overlap = Math.max(0, screenHeight - keyboardY);
+      const resizedBy = Math.max(0, baseWindowHeightRef.current - windowHeight);
+      const needsManualInset = overlap - resizedBy > 24;
+      setAndroidKeyboardInset(needsManualInset ? overlap : 0);
+    };
+
+    const showSub = Keyboard.addListener("keyboardDidShow", updateInset);
+    const frameSub = Keyboard.addListener("keyboardDidChangeFrame", updateInset);
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+      baseWindowHeightRef.current = Dimensions.get("window").height;
+      setAndroidKeyboardInset(0);
+    });
+
+    return () => {
+      showSub.remove();
+      frameSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     void trackEvent("chat_opened", {
@@ -1045,7 +1084,7 @@ const ChatScreen = ({ route, navigation }: Props) => {
     try {
       const pendingText = text;
       if (isAIChat) {
-        void trackEvent("ai_action_used", {
+        void trackEvent("ai_tool_used", {
           action: aiHubAction,
           mode: selectedAIHubMode || aiHubMode || undefined
         });
@@ -1090,6 +1129,8 @@ const ChatScreen = ({ route, navigation }: Props) => {
           if (optionalPrompt) {
             formData.append("prompt", optionalPrompt);
           }
+          formData.append("user_id", String(senderId));
+          formData.append("userId", String(senderId));
 
           const baseUrl = (API.defaults.baseURL || "").replace(/\/$/, "");
           const endpoint =
@@ -1161,7 +1202,8 @@ const ChatScreen = ({ route, navigation }: Props) => {
         const { endpoint, body } = buildAIHubRequest(
           aiHubAction as AIHubAction,
           pendingText,
-          effectiveMode
+          effectiveMode,
+          senderId
         );
         console.log("[AIHub] request", { action: aiHubAction, endpoint, body });
         const aiResponse = await API.post(endpoint, body);
@@ -1288,6 +1330,8 @@ const ChatScreen = ({ route, navigation }: Props) => {
           name: `speech-${Date.now()}.m4a`
         } as any
       );
+      formData.append("user_id", String(senderId));
+      formData.append("userId", String(senderId));
 
       const baseUrl = (API.defaults.baseURL || "").replace(/\/$/, "");
       const endpoint = `${baseUrl}/ai/speech-to-text?model=${encodeURIComponent(
@@ -1366,13 +1410,17 @@ const ChatScreen = ({ route, navigation }: Props) => {
           name: `voice-agent-${Date.now()}.m4a`
         } as any
       );
+      formData.append("user_id", String(senderId));
+      formData.append("userId", String(senderId));
 
       const activeMode = selectedAIHubMode || aiHubMode || DEFAULT_VOICE_AGENT_MODE;
       const baseUrl = (API.defaults.baseURL || "").replace(/\/$/, "");
       const endpoint =
         `${baseUrl}/ai/voice-agent?mode=${encodeURIComponent(activeMode)}` +
         `&stt_model=${encodeURIComponent(DEFAULT_STT_MODEL)}` +
-        `&tts_model=${encodeURIComponent(DEFAULT_TTS_VOICE)}`;
+        `&tts_model=${encodeURIComponent(DEFAULT_TTS_VOICE)}` +
+        `&user_id=${encodeURIComponent(String(senderId))}` +
+        `&userId=${encodeURIComponent(String(senderId))}`;
       console.log("[VoiceAgent] upload start", { cleanUri, endpoint });
 
       const response = await fetch(endpoint, {
@@ -1798,7 +1846,12 @@ const ChatScreen = ({ route, navigation }: Props) => {
               ? `message-${item.id}`
               : `message-fallback-${index}`
           }
-          contentContainerStyle={styles.messagesContent}
+          contentContainerStyle={[
+            styles.messagesContent,
+            Platform.OS === "android" && androidKeyboardInset > 0
+              ? { paddingBottom: androidKeyboardInset + 10 }
+              : null
+          ]}
           onContentSizeChange={() => {
             if (shouldAutoScrollRef.current) {
               flatListRef.current?.scrollToEnd({ animated: true });
@@ -1994,6 +2047,13 @@ const ChatScreen = ({ route, navigation }: Props) => {
         />
       </View>
 
+      <View
+        style={
+          Platform.OS === "android" && androidKeyboardInset > 0
+            ? { marginBottom: androidKeyboardInset }
+            : undefined
+        }
+      >
       {!isAIChat && aiSuggestionsEnabled && (isSuggestingReplies || suggestedReplies.length > 0) ? (
         <View style={[styles.inputRow, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
           <View
@@ -2250,6 +2310,7 @@ const ChatScreen = ({ route, navigation }: Props) => {
             <Text style={styles.sendButtonText}>{isAnalyzerUploading ? "..." : "Send"}</Text>
           </TouchableOpacity>
         ) : null}
+      </View>
       </View>
 
       {playingAudioUrl ? (
