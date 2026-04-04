@@ -8,7 +8,7 @@ import messaging from "@react-native-firebase/messaging";
 import App from './App';
 import { name as appName } from './app.json';
 import { displayChatNotificationFromRemoteMessage } from "./src/services/androidNotifications";
-import { trackEvent } from "./src/services/analytics";
+import { trackEvent, trackNotificationOpened } from "./src/services/analytics";
 
 messaging().setBackgroundMessageHandler(async (remoteMessage) => {
   const senderId = Number(remoteMessage?.data?.senderId || remoteMessage?.data?.sender_id || 0);
@@ -22,10 +22,16 @@ messaging().setBackgroundMessageHandler(async (remoteMessage) => {
 notifee.onBackgroundEvent(async ({ type, detail }) => {
   if (type !== EventType.PRESS && type !== EventType.ACTION_PRESS) return;
   const senderId = Number(detail.notification?.data?.senderId || 0);
+  const notificationId = String(
+    detail.notification?.data?.notificationId ??
+      detail.notification?.id ??
+      ""
+  ).trim() || null;
   await trackEvent("notification_opened", {
     source: "background_push",
     sender_id: senderId > 0 ? senderId : undefined
   });
+  await trackNotificationOpened(notificationId);
 });
 
 AppRegistry.registerComponent(appName, () => App);

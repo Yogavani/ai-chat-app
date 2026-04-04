@@ -17,14 +17,26 @@ type ChatListUser = User & {
   lastMessage?: string;
   lastMessageAt?: string | number | null;
   lastMessageSenderId?: number | null;
+  unreadCount?: number;
   hasConversation?: boolean;
   profileImage?: string;
   about?: string;
 };
+const CHAT_LAST_READ_KEY = "chatLastReadByUser";
 
 const isChattrAi = (user?: Pick<ChatListUser, "id" | "name"> | null) => {
   if (!user) return false;
   return user.id === 9999999 || user.name?.trim().toLowerCase() === "chattr ai";
+};
+
+const isMessageSeen = (message: any) => {
+  if (message?.is_seen === true || message?.is_seen === 1 || message?.is_seen === "1") {
+    return true;
+  }
+  if (message?.seen_at) return true;
+
+  const status = String(message?.status || "").trim().toLowerCase();
+  return status === "seen" || status === "read";
 };
 
 const HomeScreen = ({ navigation }: Props) => {
@@ -90,9 +102,15 @@ const HomeScreen = ({ navigation }: Props) => {
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
-      const storedUserId = await AsyncStorage.getItem("userId");
+      const [storedUserId, storedLastReadByUser] = await Promise.all([
+        AsyncStorage.getItem("userId"),
+        AsyncStorage.getItem(CHAT_LAST_READ_KEY)
+      ]);
       const parsedUserId = storedUserId ? Number(storedUserId) : null;
       setCurrentUserId(parsedUserId);
+      const lastReadByUser: Record<string, number> = storedLastReadByUser
+        ? JSON.parse(storedLastReadByUser)
+        : {};
 
       const allUsers = await getUsers();
       const otherUsers = parsedUserId
@@ -121,6 +139,14 @@ const HomeScreen = ({ navigation }: Props) => {
               lastMessage: lastMessage?.message ?? "",
               lastMessageAt: lastMessage?.created_at ?? lastMessage?.updated_at ?? null,
               lastMessageSenderId: lastMessage?.sender_id ?? null,
+              unreadCount: conversation.filter(
+                (item: any) =>
+                  Number(item?.sender_id) === Number(user.id) &&
+                  Number(item?.receiver_id) === Number(parsedUserId) &&
+                  !isMessageSeen(item) &&
+                  getMessageTimestamp(item?.created_at ?? item?.updated_at ?? null) >
+                    Number(lastReadByUser[String(user.id)] || 0)
+              ).length,
               hasConversation: conversation.length > 0
             };
           } catch {
@@ -185,6 +211,17 @@ const HomeScreen = ({ navigation }: Props) => {
     }
   };
 
+  const markChatAsReadLocally = async (chatUserId: number) => {
+    try {
+      const existing = await AsyncStorage.getItem(CHAT_LAST_READ_KEY);
+      const parsed: Record<string, number> = existing ? JSON.parse(existing) : {};
+      parsed[String(chatUserId)] = Date.now();
+      await AsyncStorage.setItem(CHAT_LAST_READ_KEY, JSON.stringify(parsed));
+    } catch {
+      // noop
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}> 
       {isLoading ? (
@@ -237,6 +274,7 @@ const HomeScreen = ({ navigation }: Props) => {
                 style={styles.textContent}
                 activeOpacity={0.8}
                 onPress={() => {
+                  void markChatAsReadLocally(item.id);
                   void trackEvent("chat_opened", {
                     source: "home_list",
                     receiver_id: item.id
@@ -262,6 +300,13 @@ const HomeScreen = ({ navigation }: Props) => {
                         : item.lastMessage
                       : "No messages yet"}
                   </Text>
+                  {item.unreadCount && item.unreadCount > 0 ? (
+                    <View style={[styles.unreadBadge, { backgroundColor: colors.primary }]}>
+                      <Text style={styles.unreadBadgeText}>
+                        {item.unreadCount > 99 ? "99+" : String(item.unreadCount)}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </TouchableOpacity>
             </View>
@@ -448,6 +493,20 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: "#4b5563"
+  },
+  unreadBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    marginLeft: 8,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  unreadBadgeText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "700"
   },
   logoText: {
     fontSize: 30,

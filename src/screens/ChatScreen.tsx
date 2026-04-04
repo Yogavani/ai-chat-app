@@ -97,6 +97,7 @@ const DEFAULT_TTS_VOICE = "aura-2-thalia-en";
 const DEFAULT_STT_MODEL = "nova-2";
 const DEFAULT_VOICE_AGENT_MODE = "smart";
 const CHAT_ATTACHMENT_PREFIX = "[attachment]::";
+const CHAT_LAST_READ_KEY = "chatLastReadByUser";
 
 const isMessageSeen = (item: Message) => {
   return Boolean(
@@ -175,6 +176,17 @@ const buildAIConversationContext = (chatMessages: Message[], currentUserId: numb
       role: item.sender_id === currentUserId ? "user" : "assistant",
       content: item.message
     }));
+};
+
+const markChatAsReadLocally = async (chatUserId: number) => {
+  try {
+    const existing = await AsyncStorage.getItem(CHAT_LAST_READ_KEY);
+    const parsed: Record<string, number> = existing ? JSON.parse(existing) : {};
+    parsed[String(chatUserId)] = Date.now();
+    await AsyncStorage.setItem(CHAT_LAST_READ_KEY, JSON.stringify(parsed));
+  } catch {
+    // noop
+  }
 };
 
 const buildAIHubRequest = (
@@ -768,6 +780,14 @@ const ChatScreen = ({ route, navigation }: Props) => {
       fetchMessages();
     }
   }, [senderId, receiverId]);
+
+  useEffect(() => {
+    if (isAIChat) return;
+    void markChatAsReadLocally(receiverId);
+    return () => {
+      void markChatAsReadLocally(receiverId);
+    };
+  }, [receiverId, isAIChat]);
 
   useEffect(() => {
     if (isAIChat) return;

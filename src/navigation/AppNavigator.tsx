@@ -579,7 +579,7 @@ export default AppNavigator;
 const styles = StyleSheet.create({
     inAppNotification: {
         position: "absolute",
-        top: 10,
+        top: 58,
         left: 12,
         right: 12,
         borderWidth: 1,

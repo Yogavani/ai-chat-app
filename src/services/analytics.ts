@@ -146,28 +146,26 @@ export const trackNotificationOpened = async (
   notificationId?: string | number | null
 ) => {
   const normalizedNotificationId = String(notificationId ?? "").trim();
-  if (!normalizedNotificationId) return;
 
   try {
     const userId = await getAnalyticsUserId();
-    if (!userId) return;
 
     await API.post("/track-notification-opened", {
-      user_id: userId,
-      notification_id: normalizedNotificationId
+      user_id: userId ?? null,
+      notification_id: normalizedNotificationId || null
     });
 
     if (__DEV__) {
       console.log(
         "[Analytics] tracked notification opened:",
-        normalizedNotificationId
+        normalizedNotificationId || null
       );
     }
   } catch (error) {
     if (__DEV__) {
       console.log(
         "[Analytics] failed track-notification-opened:",
-        normalizedNotificationId,
+        normalizedNotificationId || null,
         error
       );
     }
